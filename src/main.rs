@@ -1,63 +1,36 @@
 #![no_std]
 #![no_main]
 
-mod graphics;
-
 extern crate alloc;
 
+use z31_hvac::*;
+
 use core::cell::RefCell;
-use eei_vfd::gp1287bi::VFD256x50;
-use eei_vfd::prelude::EEIDisplay;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::PIO0;
-use embassy_rp::pio::{InterruptHandler, Pio};
-use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
+use embassy_rp::pio::InterruptHandler;
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
 use embassy_sync::blocking_mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_time::{Delay, Duration, Instant, Ticker, Timer};
-use embedded_graphics::framebuffer::{Framebuffer, buffer_size};
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::{FONT_10X20, FONT_4X6, FONT_6X12, FONT_6X9, FONT_7X13, FONT_8X13_BOLD};
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::pixelcolor::raw::LittleEndian;
-use embedded_graphics::primitives::PrimitiveStyle;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_time::{Duration, Ticker};
 
-use embedded_graphics::{
-    framebuffer,
-    image::Image,
-    mono_font::{MonoTextStyleBuilder, ascii::FONT_6X10},
-    prelude::*,
-    text::Text,
-};
-use embedded_graphics_transform::Transpose;
-use graphics::Display;
-use smart_leds::RGB8;
-use tinybmp::Bmp;
-use core::alloc::Layout;
+use display::Display;
 use embedded_alloc::Heap;
-use alloc::string::String;
-use alloc::format;
 use {defmt_rtt as _, panic_probe as _};
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
 });
 
-
-
-
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-
     {
         use core::mem::MaybeUninit;
         const HEAP_SIZE: usize = 1024;
@@ -66,19 +39,15 @@ async fn main(_spawner: Spawner) {
     }
 
     let p = embassy_rp::init(Default::default());
-    
 
-    let acset = false;
-    let recircset = false;
-    let defset = false;
-
+    // let acset = false;
+    // let recircset = false;
+    // let defset = false;
 
     // Setup pio state machine for i2s output
     /*let Pio {
         mut common, sm0, ..
     } = Pio::new(p.PIO0, Irqs);*/
-
-
 
     let sclk = p.PIN_22;
     let mosi = p.PIN_23;
@@ -94,15 +63,14 @@ async fn main(_spawner: Spawner) {
 
     let spi = Spi::new_blocking(p.SPI0, sclk, mosi, miso, config);
 
-    let spibus: Mutex<NoopRawMutex, RefCell<_>> = Mutex::new(RefCell::new(spi));
+    let spibus: Mutex<CriticalSectionRawMutex, RefCell<_>> = Mutex::new(RefCell::new(spi));
 
     let vfd_spi = SpiDeviceWithConfig::new(&spibus, cs, config1);
 
     let mut vfd = Display::new(vfd_spi, rst);
-    
 
     //vfd.set_brightness(128).unwrap();
-    let mut ticker = Ticker::every(Duration::from_secs(1));
+    // let mut ticker = Ticker::every(Duration::from_secs(1));
 
     /*const NUM_LEDS: usize = 1;
     let mut data = [RGB8::default(); NUM_LEDS];
@@ -112,11 +80,11 @@ async fn main(_spawner: Spawner) {
     // Wrap flash as block device
     let mut ticker = Ticker::every(Duration::from_millis(25));
 
-    vfd.displaybootimage().await;
+    vfd.draw_boot_image().await;
 
     loop {
-        vfd.testdisplay();
-        vfd.updatedisplay();
+        vfd.test_display();
+        vfd.update_display();
 
         ticker.next().await;
         /*for j in 0..(256 * 5) {
@@ -129,5 +97,3 @@ async fn main(_spawner: Spawner) {
         }*/
     }
 }
-
-

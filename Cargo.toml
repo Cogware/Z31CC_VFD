@@ -1,11 +1,15 @@
 [package]
-name = "Z31Hvac"
+name = "z31_hvac"
 version = "0.1.0"
 edition = "2024"
 authors = ["Justin Copenhaver <ninjagecko5000@gmail.com>"]
 
+[lib]
+test = false
+bench = false
+
 [[bin]]
-name = "Z31hvac"
+name = "z31_hvac"
 path = "src/main.rs"
 test = false
 doctest = false

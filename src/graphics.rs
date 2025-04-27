@@ -1,313 +1,191 @@
 use alloc::format;
-use eei_vfd::{gp1287bi::VFD256x50, prelude::EEIDisplay};
-use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
-use embassy_rp::{
-    gpio::Output,
-    peripherals::SPI0,
-    spi::{Blocking, Spi},
-};
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_time::{Delay, Duration, Ticker};
-use embedded_graphics::{image::Image, mono_font::{ascii::{FONT_7X13, FONT_8X13_BOLD}, MonoTextStyle}, text::Text, Drawable};
-use embedded_graphics::{
-    framebuffer::{Framebuffer, buffer_size},
-    pixelcolor::{
-        BinaryColor,
-        raw::{LittleEndian, RawU1},
-    },
-    prelude::{Point, Primitive},
-    primitives::{PrimitiveStyle, Triangle},
-};
-use embedded_graphics_transform::Transpose;
-use smart_leds::RGB8;
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::mono_font::ascii::{FONT_7X13, FONT_8X13_BOLD};
+use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::prelude::*;
+use embedded_graphics::primitives::{PrimitiveStyle, Triangle};
+use embedded_graphics::text::Text;
 use tinybmp::Bmp;
 
 const FAIRLADYBMP: &'static [u8] = include_bytes!("../assets/fairlady.bmp");
-const CCBACKGROUND: &'static [u8] = include_bytes!("../assets/ClimateControlBackground.bmp");
-const CCFACE: &'static [u8] = include_bytes!("../assets/Face.bmp");
-const CCFEET: &'static [u8] = include_bytes!("../assets/Feet.bmp");
-const CCFACEFEET: &'static [u8] = include_bytes!("../assets/FaceandFeet.bmp");
-const CCDEF: &'static [u8] = include_bytes!("../assets/Def.bmp");
+const CC_BACKGROUND: &'static [u8] = include_bytes!("../assets/ClimateControlBackground.bmp");
+const CC_FACE: &'static [u8] = include_bytes!("../assets/Face.bmp");
+const CC_FEET: &'static [u8] = include_bytes!("../assets/Feet.bmp");
+const CC_FACE_FEET: &'static [u8] = include_bytes!("../assets/FaceandFeet.bmp");
+const CC_DEF: &'static [u8] = include_bytes!("../assets/Def.bmp");
 
+pub trait BinaryTarget: DrawTarget<Color = BinaryColor> {}
+impl<T> BinaryTarget for T where T: DrawTarget<Color = BinaryColor> {}
 
-pub type InternalFrameBuffer = Transpose<Framebuffer<BinaryColor,RawU1,LittleEndian,128,256,{ buffer_size::<BinaryColor>(128, 256) },>,>;
-
-pub enum Mode{
+pub enum ClimateControlMode {
     Face,
     Feet,
     FaceFeet,
     FeetDef,
-    Def
+    Def,
 }
 
-pub struct Display<'a> {
-    vfd: VFD256x50<
-        SpiDeviceWithConfig<'a, NoopRawMutex, Spi<'a, SPI0, Blocking>, Output<'a>>,
-        Output<'a>,
-        Delay,
-    >,
-    actoggle: bool,
-    recirctoggle: bool,
-    framebuffer: InternalFrameBuffer,
-    bootimage: Bmp<'a, BinaryColor>,
-    background: Bmp<'a, BinaryColor>,
-    ccface: Bmp<'a, BinaryColor>,
-    ccfeet: Bmp<'a, BinaryColor>,
-    ccfacefeet: Bmp<'a, BinaryColor>,
-    ccdef: Bmp<'a, BinaryColor>,
-    tempfont: MonoTextStyle<'a, BinaryColor>,
-    offfont: MonoTextStyle<'a, BinaryColor>,
+pub struct Image {
+    data: Bmp<'static, BinaryColor>,
+    offset: Point,
+}
+
+impl Drawable for Image {
+    type Color = BinaryColor;
+    type Output = ();
+
+    fn draw<D>(&self, target: &mut D) -> Result<Self::Output, D::Error>
+    where
+        D: DrawTarget<Color = Self::Color>,
+    {
+        self.data.draw(&mut target.translated(self.offset))
+    }
+}
+
+pub struct Graphics {
+    boot: Image,
+    background: Image,
+    cc_face: Image,
+    cc_feet: Image,
+    cc_face_feet: Image,
+    cc_def: Image,
     fill: PrimitiveStyle<BinaryColor>,
-    mode: Mode,
-    internaltemp: i8,
-    ambtemp: i8,
-    tempguage: u8,
-    fanguage: u8,
+    def_text: Text<'static, MonoTextStyle<'static, BinaryColor>>,
+    temp_font: MonoTextStyle<'static, BinaryColor>,
+    off_font: MonoTextStyle<'static, BinaryColor>,
 }
 
-impl<'a> Display<'a> {
-    pub fn new(
-        spibus: SpiDeviceWithConfig<'a, NoopRawMutex, Spi<'a, SPI0, Blocking>, Output<'a>>,
-        reset: Output<'a>,
-    ) -> Self {
-        let mut vfd: VFD256x50<_, _, _> = EEIDisplay::new(spibus, reset, Delay).unwrap();
-
-        vfd.clear_frame().unwrap();
-
-        let fb = Framebuffer::<
-            BinaryColor,
-            _,
-            LittleEndian,
-            128,
-            256,
-            { buffer_size::<BinaryColor>(128, 256) },
-        >::new();
-
-        let vfdfb = Transpose::new(fb);
-
-        let bootimage = Bmp::from_slice(FAIRLADYBMP).unwrap();
-        let background = Bmp::from_slice(CCBACKGROUND).unwrap();
-        let ccface = Bmp::from_slice(CCFACE).unwrap();
-        let ccfeet = Bmp::from_slice(CCFEET).unwrap();
-        let ccfacefeet = Bmp::from_slice(CCFACEFEET).unwrap();
-        let ccdef = Bmp::from_slice(CCDEF).unwrap();
-
-        let tempfont = MonoTextStyle::new(&FONT_8X13_BOLD, BinaryColor::On);
-        let offfont = MonoTextStyle::new(&FONT_7X13, BinaryColor::On);
-        let fill = PrimitiveStyle::with_fill(BinaryColor::On);
-        let mode = Mode::FeetDef;
-        let internaltemp: i8 = 60;
-        let ambtemp: i8 = -60;
-        let tempguage: u8 = 0;
-        let fanguage: u8 = 0;
-
-        let d = Display {
-            vfd,
-            actoggle: false,
-            recirctoggle: false,
-            framebuffer: vfdfb,
-            bootimage,
-            background,
-            ccface,
-            ccfeet,
-            ccfacefeet,
-            ccdef,
-            tempfont,
-            offfont,
-            fill,
-            mode,
-            internaltemp,
-            ambtemp,
-            tempguage,
-            fanguage,
+impl Graphics {
+    pub fn load() -> Self {
+        let boot = Image {
+            data: Bmp::from_slice(FAIRLADYBMP).unwrap(),
+            offset: Point::new(5, 14),
         };
-        d
-    }
+        let background = Image {
+            data: Bmp::from_slice(CC_BACKGROUND).unwrap(),
+            offset: Point::new(0, 0),
+        };
+        let cc_face = Image {
+            data: Bmp::from_slice(CC_FACE).unwrap(),
+            offset: Point::new(135, 2),
+        };
+        let cc_feet = Image {
+            data: Bmp::from_slice(CC_FEET).unwrap(),
+            offset: Point::new(135, 2),
+        };
+        let cc_face_feet = Image {
+            data: Bmp::from_slice(CC_FACE_FEET).unwrap(),
+            offset: Point::new(135, 2),
+        };
+        let cc_def = Image {
+            data: Bmp::from_slice(CC_DEF).unwrap(),
+            offset: Point::new(135, 2),
+        };
 
-    pub async fn displaybootimage(&mut self) {
-        let mut ticker = Ticker::every(Duration::from_secs(1));
-        self.vfd.clear_frame().unwrap();
+        let temp_font = MonoTextStyle::new(&FONT_8X13_BOLD, BinaryColor::On);
+        let off_font = MonoTextStyle::new(&FONT_7X13, BinaryColor::On);
 
-        Image::new(&self.bootimage, Point::new(5, 14)).draw(&mut self.framebuffer).unwrap();
+        let fill = PrimitiveStyle::with_fill(BinaryColor::On);
+        let def_text = Text::new("DEF", Point::new(130, 12), temp_font);
 
-        self.vfd.update_frame(self.framebuffer.data()).unwrap();
-        self.vfd.set_brightness(128).unwrap();
-        ticker.next().await;
-        self.vfd.set_brightness(255).unwrap();
-        ticker.next().await;
-
-    }
-
-    // return mutable refrence to framebuffer to use outside this struct
-    pub fn useframebuffer( &mut self) -> &mut InternalFrameBuffer {
-        &mut self.framebuffer
-    }
-
-    fn drawbackground(&mut self){
-        Image::new(&self.background, Point::new(0, 0)).draw(&mut self.framebuffer).unwrap();
-    }
-
-    fn draw_mode(&mut self){
-        match self.mode {
-            Mode::Feet => Image::new(&self.ccfeet, Point::new(135, 2)).draw(&mut self.framebuffer).unwrap(),
-            Mode::Face => Image::new(&self.ccface, Point::new(135, 2)).draw(&mut self.framebuffer).unwrap(),
-            Mode::FaceFeet => Image::new(&self.ccfacefeet, Point::new(135, 2)).draw(&mut self.framebuffer).unwrap(),
-            Mode::FeetDef => {Image::new(&self.ccfeet, Point::new(135, 2)).draw(&mut self.framebuffer).unwrap();
-                              Text::new("DEF", Point::new(130,12), self.tempfont).draw(&mut self.framebuffer).unwrap();   
-                             },
-            Mode::Def => {Image::new(&self.ccdef, Point::new(135, 2)).draw(&mut self.framebuffer).unwrap();
-                Text::new("DEF", Point::new(130,12), self.tempfont).draw(&mut self.framebuffer).unwrap();   
-                         },  
-                    }
-        if self.actoggle == true{
-            Text::new("ON", Point::new(107,19), self.tempfont).draw(&mut self.framebuffer).unwrap();
-        } else {
-            Text::new("OFF", Point::new(105,19), self.offfont).draw(&mut self.framebuffer).unwrap();
-        }
-        if self.recirctoggle == true{
-            Text::new("ON", Point::new(107,44), self.tempfont).draw(&mut self.framebuffer).unwrap();
-        } else {
-            Text::new("OFF", Point::new(105,44), self.offfont).draw(&mut self.framebuffer).unwrap();
+        Self {
+            boot,
+            background,
+            cc_face,
+            cc_feet,
+            cc_face_feet,
+            cc_def,
+            def_text,
+            temp_font,
+            off_font,
+            fill,
         }
     }
 
-    fn draw_temps(&mut self){
-        Text::new(&format!("{:?}", self.internaltemp), Point::new(43,12), self.tempfont).draw(&mut self.framebuffer).unwrap();
+    pub fn draw_boot_image<D: BinaryTarget>(&self, display: &mut D) {
+        _ = self.boot.draw(display)
+    }
 
-        if self.ambtemp <= -1{
-            Text::new(&format!("{:?}", self.ambtemp), Point::new(35,37), self.tempfont).draw(&mut self.framebuffer).unwrap();
-        } else {
-        Text::new(&format!("{:?}", self.ambtemp), Point::new(43,37), self.tempfont).draw(&mut self.framebuffer).unwrap();
+    pub fn draw_background<D: BinaryTarget>(&self, display: &mut D) {
+        _ = self.background.draw(display)
+    }
+
+    pub fn draw_climate_control_mode<D: BinaryTarget>(
+        &self,
+        mode: &ClimateControlMode,
+        display: &mut D,
+    ) {
+        match mode {
+            ClimateControlMode::Face => _ = self.cc_face.draw(display),
+            ClimateControlMode::Feet => _ = self.cc_feet.draw(display),
+            ClimateControlMode::FaceFeet => _ = self.cc_face_feet.draw(display),
+            ClimateControlMode::FeetDef => {
+                _ = self.cc_feet.draw(display);
+                _ = self.def_text.draw(display);
+            }
+            ClimateControlMode::Def => {
+                _ = self.cc_def.draw(display);
+                _ = self.def_text.draw(display);
+            }
         }
     }
 
-    fn draw_fanguage(&mut self) { //5 HI 37 LO
-        if self.fanguage > 32 {
-            return ();
+    pub fn draw_ac_toggle<D: BinaryTarget>(&self, toggle_on: bool, display: &mut D) {
+        match toggle_on {
+            true => _ = Text::new("ON", Point::new(107, 19), self.temp_font).draw(display),
+            false => _ = Text::new("OFF", Point::new(105, 19), self.off_font).draw(display),
         }
-        let pos = map_int(self.fanguage.into(), 0, 32, 37, 5);
-        Triangle::new(
+    }
+
+    pub fn draw_recirc_toggle<D: BinaryTarget>(&self, toggle_on: bool, display: &mut D) {
+        match toggle_on {
+            true => _ = Text::new("ON", Point::new(107, 44), self.temp_font).draw(display),
+            false => _ = Text::new("OFF", Point::new(105, 44), self.off_font).draw(display),
+        }
+    }
+
+    pub fn draw_internal_temp<D: BinaryTarget>(&self, temp: i8, display: &mut D) {
+        // TODO: is this what you want? you offset the ambient temp so I did it here too
+        let point = {
+            if temp < 0 {
+                Point::new(35, 12)
+            } else {
+                Point::new(43, 12)
+            }
+        };
+
+        _ = Text::new(&format!("{temp}"), point, self.temp_font).draw(display);
+    }
+
+    pub fn draw_ambient_temp<D: BinaryTarget>(&self, temp: i8, display: &mut D) {
+        let point = {
+            if temp < 0 {
+                Point::new(35, 37)
+            } else {
+                Point::new(43, 37)
+            }
+        };
+
+        _ = Text::new(&format!("{temp}"), point, self.temp_font).draw(display);
+    }
+
+    pub fn draw_fan_gauge<D: BinaryTarget>(&self, pos: i32, display: &mut D) {
+        _ = Triangle::new(
             Point::new(92, pos),
             Point::new(94, pos - 2),
             Point::new(94, pos + 2),
         )
         .into_styled(self.fill)
-        .draw(&mut self.framebuffer)
-        .unwrap();
+        .draw(display);
     }
 
-    fn draw_tempguage(&mut self) {// 42 HOT 5 COLD
-        if self.tempguage > 36 {
-            return ();
-        }
-        let pos = map_int(self.tempguage.into(), 0, 36, 42, 5);
-        Triangle::new(
+    pub fn draw_temp_guage<D: BinaryTarget>(&self, pos: i32, display: &mut D) {
+        _ = Triangle::new(
             Point::new(21, pos),
             Point::new(23, pos - 2),
             Point::new(23, pos + 2),
         )
         .into_styled(self.fill)
-        .draw(&mut self.framebuffer)
-        .unwrap();
+        .draw(display);
     }
-
-    pub fn updatedisplay(&mut self){
-        self.vfd.clear_frame().unwrap();
-        self.drawbackground();
-        self.draw_mode();
-        self.draw_fanguage();
-        self.draw_tempguage();
-        self.draw_temps();
-        self.vfd.update_frame(self.framebuffer.data()).unwrap();
-    }
-
-    pub fn testdisplay(&mut self){
-
-        for i in 0..=36{
-            self.tempguage = i;
-            self.updatedisplay();
-        }
-
-        self.actoggle = true;
-        self.updatedisplay();
-        self.mode = Mode::Face;
-        self.updatedisplay();
-        
-        for i in 0..=36{
-            let range = map_int(i.into(), 0, 36, 36, 0);
-            self.tempguage = range.try_into().unwrap();
-            self.updatedisplay();
-        }
-
-        self.actoggle = false;
-        self.updatedisplay();
-        self.mode = Mode::Feet;
-        self.updatedisplay();
-
-        for i in 60..=99{
-            self.internaltemp = i;
-            self.updatedisplay();
-        }
-
-        self.recirctoggle = true;
-        self.updatedisplay();
-        self.mode = Mode::FaceFeet;
-        self.updatedisplay();
-
-        for i in 60..=99{
-            let range = map_int(i.into(), 60, 99, 99, 60);
-            self.internaltemp = range.try_into().unwrap();
-            self.updatedisplay();
-        }
-
-        self.recirctoggle = false;
-        self.updatedisplay();
-        self.mode = Mode::FeetDef;
-        self.updatedisplay();
-
-        for i in -60..=99{
-            self.ambtemp = i;
-            self.updatedisplay();
-        }
-
-        self.mode = Mode::Def;
-        self.updatedisplay();
-
-        for i in -60..=99{
-            let range = map_int(i.into(), -60, 99, 99, -60);
-            self.ambtemp = range.try_into().unwrap();
-            self.updatedisplay();
-        }
-
-        for i in 0..=32{
-            self.fanguage = i;
-            self.updatedisplay();
-        }
-
-        for i in 32..=0{
-            let range = map_int(i.into(), 0, 32, 32, 0);
-            self.fanguage = range.try_into().unwrap();
-            self.updatedisplay();
-        }
-    }
-}
-
-
-
-
-pub fn map_int(x: i32, in_min: i32, in_max: i32, out_min: i32, out_max: i32) -> i32 {
-    (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
-}
-
-pub fn wheel(mut wheel_pos: u8) -> RGB8 {
-    wheel_pos = 255 - wheel_pos;
-    if wheel_pos < 85 {
-        return (255 - wheel_pos * 3, 0, wheel_pos * 3).into();
-    }
-    if wheel_pos < 170 {
-        wheel_pos -= 85;
-        return (0, wheel_pos * 3, 255 - wheel_pos * 3).into();
-    }
-    wheel_pos -= 170;
-    (wheel_pos * 3, 255 - wheel_pos * 3, 0).into()
 }
