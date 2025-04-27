@@ -35,7 +35,7 @@ use embedded_graphics::{
     text::Text,
 };
 use embedded_graphics_transform::Transpose;
-use graphics::{set_fanguage, set_tempguage};
+use graphics::Display;
 use smart_leds::RGB8;
 use tinybmp::Bmp;
 use core::alloc::Layout;
@@ -48,11 +48,7 @@ bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
 });
 
-const FAIRLADYBMP: &'static [u8] = include_bytes!("../assets/fairlady.bmp");
-const CCBACKGROUND: &'static [u8] = include_bytes!("../assets/ClimateControlBackground.bmp");
-const CCFACE: &'static [u8] = include_bytes!("../assets/Face.bmp");
-const CCFEET: &'static [u8] = include_bytes!("../assets/Feet.bmp");
-const CCFACEFEET: &'static [u8] = include_bytes!("../assets/FaceandFeet.bmp");
+
 
 
 #[global_allocator]
@@ -78,15 +74,11 @@ async fn main(_spawner: Spawner) {
 
 
     // Setup pio state machine for i2s output
-    let Pio {
+    /*let Pio {
         mut common, sm0, ..
-    } = Pio::new(p.PIO0, Irqs);
+    } = Pio::new(p.PIO0, Irqs);*/
 
-    let bootimage = Bmp::from_slice(FAIRLADYBMP).unwrap();
-    let background = Bmp::from_slice(CCBACKGROUND).unwrap();
-    //let face = Bmp::from_slice(CCFACE).unwrap();
-    //let feet = Bmp::from_slice(CCFEET).unwrap();
-    let facefeet = Bmp::from_slice(CCFACEFEET).unwrap();
+
 
     let sclk = p.PIN_22;
     let mosi = p.PIN_23;
@@ -97,46 +89,20 @@ async fn main(_spawner: Spawner) {
     let mut config = spi::Config::default();
     config.frequency = 4_000_000;
 
-    let spi = Spi::new_blocking(p.SPI0, sclk, mosi, miso, config);
-
-    let bus: Mutex<NoopRawMutex, RefCell<_>> = Mutex::new(RefCell::new(spi));
-
     let mut config1 = spi::Config::default();
     config1.frequency = 4_000_000;
 
-    let mut vfd_spi = SpiDeviceWithConfig::new(&bus, cs, config1);
+    let spi = Spi::new_blocking(p.SPI0, sclk, mosi, miso, config);
 
-    let mut delay = Delay;
+    let spibus: Mutex<NoopRawMutex, RefCell<_>> = Mutex::new(RefCell::new(spi));
 
-    let mut vfd: VFD256x50<_, _, _> = EEIDisplay::new(&mut vfd_spi, rst, &mut delay).unwrap();
+    let vfd_spi = SpiDeviceWithConfig::new(&spibus, cs, config1);
 
-    vfd.clear_frame().unwrap();
+    let mut vfd = Display::new(vfd_spi, rst);
+    
+
     //vfd.set_brightness(128).unwrap();
     let mut ticker = Ticker::every(Duration::from_secs(1));
-
-    let fb = Framebuffer::<
-        BinaryColor,
-        _,
-        LittleEndian,
-        128,
-        256,
-        { buffer_size::<BinaryColor>(128, 256) },
-    >::new();
-
-    let mut vfdfb = Transpose::new(fb);
-
-
-    Image::new(&bootimage, Point::new(5, 14)).draw(&mut vfdfb).unwrap();
-
-    vfd.update_frame(vfdfb.data()).unwrap();
-    vfd.set_brightness(128).unwrap();
-    ticker.next().await;
-    vfd.set_brightness(255).unwrap();
-    ticker.next().await;
-
-    let tempfont = MonoTextStyle::new(&FONT_8X13_BOLD, BinaryColor::On);
-    let offfont = MonoTextStyle::new(&FONT_7X13, BinaryColor::On);
-    let fill = PrimitiveStyle::with_fill(BinaryColor::On);
 
     /*const NUM_LEDS: usize = 1;
     let mut data = [RGB8::default(); NUM_LEDS];
@@ -145,57 +111,12 @@ async fn main(_spawner: Spawner) {
 
     // Wrap flash as block device
     let mut ticker = Ticker::every(Duration::from_millis(25));
-    vfd.set_brightness(128).unwrap();
 
-    let mut fanval = 0; 
-    let mut tempval = 0;
-    let mut internaltemp = 60;
-    let mut ambtemp = 60;
+    vfd.displaybootimage().await;
 
     loop {
-        if fanval >= 32{
-            fanval = 0;
-        } else {
-            fanval = fanval + 1;
-        }
-        if tempval >= 36{
-            tempval = 0;
-        } else {
-            tempval = tempval + 1;
-        }
-        if internaltemp >= 99{
-            internaltemp = 60;
-        } else {
-            internaltemp = internaltemp + 1;
-        }
-        if ambtemp >= 99{
-            ambtemp = -60
-        } else {
-            ambtemp = ambtemp + 1;
-        }
-
-    
-        vfd.clear_frame().unwrap();
-        vfdfb.clear(BinaryColor::Off).unwrap();
-
-        Image::new(&background, Point::new(0, 0)).draw(&mut vfdfb).unwrap();
-        Image::new(&facefeet, Point::new(135, 2)).draw(&mut vfdfb).unwrap();
-        Text::new(&format!("{:?}", internaltemp), Point::new(43,12), tempfont).draw(&mut vfdfb).unwrap();
-
-        let negshift = 8;
-        if ambtemp <= -1{
-            Text::new(&format!("{:?}", ambtemp), Point::new(43 - negshift,37), tempfont).draw(&mut vfdfb).unwrap();
-        } else{
-        Text::new(&format!("{:?}", ambtemp), Point::new(43,37), tempfont).draw(&mut vfdfb).unwrap();
-        }
-
-        Text::new("OFF", Point::new(105,19), offfont).draw(&mut vfdfb).unwrap();
-        Text::new("ON", Point::new(107,44), tempfont).draw(&mut vfdfb).unwrap();
-        
-        set_tempguage(&mut vfdfb, tempval);
-        set_fanguage(&mut vfdfb, fanval);
-
-        vfd.update_frame(vfdfb.data()).unwrap();
+        vfd.testdisplay();
+        vfd.updatedisplay();
 
         ticker.next().await;
         /*for j in 0..(256 * 5) {
