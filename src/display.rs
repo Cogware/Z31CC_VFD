@@ -16,8 +16,7 @@ use embedded_graphics::{
 };
 use embedded_graphics_transform::Transpose;
 
-use crate::graphics::{ClimateControlMode, Graphics};
-use crate::{map_i8, map_u8};
+use crate::{graphics::{ClimateControlMode, Graphics}, map_i32};
 
 pub type InternalFrameBuffer = Framebuffer<
     BinaryColor,
@@ -128,7 +127,7 @@ impl<'a> Display<'a> {
         if self.fan_gauge > 32 {
             return;
         }
-        let pos = map_u8(self.fan_gauge, 0, 32, 37, 5) as i32;
+        let pos = map_i32(self.fan_gauge.into(), 0, 32, 37, 5) as i32;
         self.graphics.draw_fan_gauge(pos, &mut self.framebuffer);
     }
 
@@ -137,7 +136,7 @@ impl<'a> Display<'a> {
         if self.temp_gauge > 36 {
             return ();
         }
-        let pos = map_u8(self.temp_gauge, 0, 36, 42, 5) as i32;
+        let pos = map_i32(self.temp_gauge.into(), 0, 36, 42, 5) as i32;
         self.graphics.draw_temp_guage(pos, &mut self.framebuffer);
     }
 
@@ -158,18 +157,16 @@ impl<'a> Display<'a> {
         }
 
         self.ac_toggle = true;
-        self.update_display();
         self.mode = ClimateControlMode::Face;
         self.update_display();
 
         for i in 0..=36 {
-            let range = map_u8(i, 0, 36, 36, 0);
+            let range = map_i32(i, 0, 36, 36, 0);
             self.temp_gauge = range as _;
             self.update_display();
         }
 
         self.ac_toggle = false;
-        self.update_display();
         self.mode = ClimateControlMode::Feet;
         self.update_display();
 
@@ -179,18 +176,16 @@ impl<'a> Display<'a> {
         }
 
         self.recirc_toggle = true;
-        self.update_display();
         self.mode = ClimateControlMode::FaceFeet;
         self.update_display();
 
         for i in 60..=99 {
-            let range = map_u8(i, 60, 99, 99, 60);
+            let range = map_i32(i, 60, 99, 99, 60);
             self.internal_temp = range as _;
             self.update_display();
         }
 
         self.recirc_toggle = false;
-        self.update_display();
         self.mode = ClimateControlMode::FeetDef;
         self.update_display();
 
@@ -203,7 +198,7 @@ impl<'a> Display<'a> {
         self.update_display();
 
         for i in -60..=99 {
-            let range = map_i8(i, -60, 99, 99, -60);
+            let range = map_i32(i, -60, 99, 99, -60);
             self.ambient_temp = range as _;
             self.update_display();
         }
@@ -214,7 +209,7 @@ impl<'a> Display<'a> {
         }
 
         for i in 32..=0 {
-            let range = map_u8(i, 0, 32, 32, 0);
+            let range = map_i32(i, 0, 32, 32, 0);
             self.fan_gauge = range as _;
             self.update_display();
         }
