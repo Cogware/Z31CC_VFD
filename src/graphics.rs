@@ -13,6 +13,7 @@ const CC_FACE: &'static [u8] = include_bytes!("../assets/Face.bmp");
 const CC_FEET: &'static [u8] = include_bytes!("../assets/Feet.bmp");
 const CC_FACE_FEET: &'static [u8] = include_bytes!("../assets/FaceandFeet.bmp");
 const CC_DEF: &'static [u8] = include_bytes!("../assets/Def.bmp");
+const CC_DEFSYM: &'static [u8] = include_bytes!("../assets/DefSymbol.bmp");
 
 pub trait BinaryTarget: DrawTarget<Color = BinaryColor> {}
 impl<T> BinaryTarget for T where T: DrawTarget<Color = BinaryColor> {}
@@ -49,8 +50,8 @@ pub struct Graphics {
     cc_feet: Image,
     cc_face_feet: Image,
     cc_def: Image,
+    cc_defsym: Image,
     fill: PrimitiveStyle<BinaryColor>,
-    def_text: Text<'static, MonoTextStyle<'static, BinaryColor>>,
     temp_font: MonoTextStyle<'static, BinaryColor>,
     off_font: MonoTextStyle<'static, BinaryColor>,
 }
@@ -81,12 +82,15 @@ impl Graphics {
             data: Bmp::from_slice(CC_DEF).unwrap(),
             offset: Point::new(135, 2),
         };
+        let cc_defsym = Image{
+            data: Bmp::from_slice(CC_DEFSYM).unwrap(),
+            offset: Point::new(130, 2),
+        };
 
         let temp_font = MonoTextStyle::new(&FONT_8X13_BOLD, BinaryColor::On);
         let off_font = MonoTextStyle::new(&FONT_7X13, BinaryColor::On);
 
         let fill = PrimitiveStyle::with_fill(BinaryColor::On);
-        let def_text = Text::new("DEF", Point::new(130, 12), temp_font);
 
         Self {
             boot,
@@ -95,7 +99,7 @@ impl Graphics {
             cc_feet,
             cc_face_feet,
             cc_def,
-            def_text,
+            cc_defsym,
             temp_font,
             off_font,
             fill,
@@ -121,11 +125,11 @@ impl Graphics {
             ClimateControlMode::FaceFeet => _ = self.cc_face_feet.draw(display),
             ClimateControlMode::FeetDef => {
                 _ = self.cc_feet.draw(display);
-                _ = self.def_text.draw(display);
+                _ = self.cc_defsym.draw(display);
             }
             ClimateControlMode::Def => {
                 _ = self.cc_def.draw(display);
-                _ = self.def_text.draw(display);
+                _ = self.cc_defsym.draw(display);
             }
         }
     }
