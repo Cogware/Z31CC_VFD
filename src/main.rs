@@ -3,27 +3,29 @@
 
 extern crate alloc;
 
+use z31_hvac::temp::Thermistor;
 use z31_hvac::*;
 
 use core::cell::RefCell;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_executor::Spawner;
 use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{Level, Output};
+use embassy_rp::gpio::{Level, Output, Pull};
 use embassy_rp::peripherals::PIO0;
-use embassy_rp::pio::InterruptHandler;
+use embassy_rp::pio::InterruptHandler as PIOInt;
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_time::{Duration, Ticker};
+use embassy_rp::adc::{Adc, Channel, Config};
 
 use display::Display;
 use embedded_alloc::Heap;
 use {defmt_rtt as _, panic_probe as _};
 
-bind_interrupts!(struct Irqs {
-    PIO0_IRQ_0 => InterruptHandler<PIO0>;
+bind_interrupts!(struct PIOIrqs {
+    PIO0_IRQ_0 => PIOInt<PIO0>;
 });
 
 #[global_allocator]
@@ -48,6 +50,12 @@ async fn main(_spawner: Spawner) {
     /*let Pio {
         mut common, sm0, ..
     } = Pio::new(p.PIO0, Irqs);*/
+
+    let adc = Adc::new_blocking(p.ADC, Config::default());
+
+    let ambtemp = Channel::new_pin(p.PIN_26, Pull::None);
+
+    let mut therm = Thermistor::new(ambtemp, adc);
 
     let sclk = p.PIN_22;
     let mosi = p.PIN_23;
@@ -83,7 +91,11 @@ async fn main(_spawner: Spawner) {
     vfd.draw_boot_image().await;
 
     loop {
-        vfd.test_display();
+
+
+
+        vfd.ambient_temp = therm.measure_temp();
+
         vfd.update_display();
 
         ticker.next().await;

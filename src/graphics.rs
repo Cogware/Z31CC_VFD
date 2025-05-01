@@ -161,9 +161,9 @@ impl Graphics {
         _ = Text::new(&format!("{temp}"), point, self.temp_font).draw(display);
     }
 
-    pub fn draw_ambient_temp<D: BinaryTarget>(&self, temp: i8, display: &mut D) {
+    pub fn draw_ambient_temp<D: BinaryTarget>(&self, temp: f64, display: &mut D) {
         let point = {
-            if temp < 0 {
+            if temp < 0.0 {
                 Point::new(35, 37)
             } else {
                 Point::new(43, 37)

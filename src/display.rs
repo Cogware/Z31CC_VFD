@@ -40,8 +40,8 @@ pub struct Display<'a> {
     framebuffer: Transpose<InternalFrameBuffer>,
     graphics: Graphics,
     mode: ClimateControlMode,
-    internal_temp: i8,
-    ambient_temp: i8,
+    pub internal_temp: i8,
+    pub ambient_temp: f64,
     temp_gauge: u8,
     fan_gauge: u8,
 }
@@ -65,7 +65,7 @@ impl<'a> Display<'a> {
 
         let mode = ClimateControlMode::FeetDef;
         let internal_temp: i8 = 60;
-        let ambient_temp: i8 = -60;
+        let ambient_temp: f64 = -60.0;
         let temp_gauge: u8 = 0;
         let fan_gauge: u8 = 0;
 
@@ -189,10 +189,10 @@ impl<'a> Display<'a> {
         self.mode = ClimateControlMode::FeetDef;
         self.update_display();
 
-        for i in -60..=99 {
+        /*for i in -60.0..=99.0 {
             self.ambient_temp = i;
             self.update_display();
-        }
+        }*/
 
         self.mode = ClimateControlMode::Def;
         self.update_display();
