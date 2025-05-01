@@ -78,13 +78,13 @@ impl <'a>Thermistor<'a> {
         let res = self.adc_to_resistance(adc);
         let temp = self.calculate_temperature(res);
         let tempc = kelvin_to_celsius(temp);
-        //let tempf = celcius_to_fahrenheit(tempc);
-        tempc
+        let tempf = celcius_to_fahrenheit(tempc);
+        tempf
     }
 
     /// Convert a raw 16-bit ADC reading → thermistor resistance (Ω)
     fn adc_to_resistance(&self, adc: f64) -> f64 {
-        let x: f64 = self.pullup * ((self.adc_max/adc as f64) - 1.0);
+        let x: f64 = self.pullup / ((self.adc_max/adc as f64) - 1.0);
         x
     }
 
