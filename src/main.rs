@@ -94,7 +94,7 @@ async fn main(_spawner: Spawner) {
 
 
 
-        vfd.ambient_temp = therm.measure_temp();
+        vfd.ambient_temp = therm.measure_temp() as i8;
 
         vfd.update_display();
 
