@@ -5,6 +5,7 @@ extern crate alloc;
 pub mod display;
 pub mod graphics;
 pub mod temp;
+pub mod segdisplay;
 
 #[allow(unused)]
 pub(crate) fn map_u8(x: u8, in_min: u8, in_max: u8, out_min: u8, out_max: u8) -> u8 {
