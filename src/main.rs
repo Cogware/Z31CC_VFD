@@ -15,14 +15,12 @@ use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_executor::{Spawner, task};
 use embassy_rp::adc::{Adc, Channel, Config};
 use embassy_rp::gpio::{Input, Level, Output, Pull};
-use embassy_rp::peripherals::PIO0;
+use embassy_rp::peripherals::{PIN_10, PIN_9, PIO0};
 use embassy_rp::pio::{InterruptHandler as PIOInt, Pio};
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
 use embassy_rp::{bind_interrupts, block, i2c};
-use embassy_sync::blocking_mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_time::{Duration, Ticker, block_for};
+use embassy_time::{block_for, Duration, Ticker, Timer};
 
 use display::Display;
 use embedded_alloc::Heap;
@@ -96,19 +94,17 @@ async fn main(spawner: Spawner) {
     //vfd.set_brightness(128).unwrap();
     // let mut ticker = Ticker::every(Duration::from_secs(1));
 
-    const NUM_LEDS: usize = 1;
+    /*const NUM_LEDS: usize = 1;
     let mut data = [RGB8::default(); NUM_LEDS];
     let program = PioWs2812Program::new(&mut common);
-    //let mut ws2812 = PioWs2812::new(&mut common, sm0, p.DMA_CH1, p.PIN_21, &program);
+    let mut ws2812 = PioWs2812::new(&mut common, sm0, p.DMA_CH1, p.PIN_21, &program);*/
 
     // Wrap flash as block device
     let mut ticker = Ticker::every(Duration::from_millis(100));
 
     //vfd.draw_boot_image().await;
     let mut clock = Output::new(p.PIN_6, Level::Low);
-    let mut data = Output::new(p.PIN_5, Level::Low);
-    let mut sync= Input::new(p.PIN_9, Pull::None);
-    let mut syncout = Output::new(p.PIN_10, Level::Low);
+    let mut dataserial = Output::new(p.PIN_5, Level::Low);
     
 
     //let vals = therm.measure_temp();
@@ -116,44 +112,51 @@ async fn main(spawner: Spawner) {
     //vfd.internal_temp = vals[1] as i8;
 
     //vfd.update_display();
-    spawner.spawn(serialsyncer(&mut sync, &mut syncout));
+    spawner.spawn(serialsyncer()).unwrap();
+    
     loop {
         let bitfield: u128 = 0x1FFFFFFFFFF;
-
         for i in 0..128 {
             if (bitfield >> i) & 1 == 1 {
                 let single_bit: u128 = 1u128 << i;
-
-                for i in (0..128).rev() {
-                    clock.set_low();
-                    block_for(Duration::from_micros(8));
-                    clock.set_high();
-                    block_for(Duration::from_micros(2));
-                    let gpio_level = (single_bit >> i) & 1 != 0;
-                    data.set_level(gpio_level.into());
-                }
-                /*for j in 0..(256 * 5) {
-                    for i in 0..NUM_LEDS {
-                        data[i] =
-                            wheel((((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255) as u8);
-                    }
-                    ws2812.write(&data).await;
-
-                    ticker.next().await;
-                }*/
+    
+                for i in (0..128).rev(){
+                clock.set_low();
+                block_for(Duration::from_micros(8));
+                clock.set_high();
+                block_for(Duration::from_micros(2));
+                let gpio_level = (single_bit >> i) & 1 !=0;
+                dataserial.set_level(gpio_level.into());
             }
         }
+        Timer::after(Duration::from_millis(500)).await;
     }
+        /*for j in 0..(256 * 5) {
+            for i in 0..NUM_LEDS {
+                data[i] =
+                    wheel((((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255) as u8);
+            }
+            ws2812.write(&data).await;
 
+            ticker.next().await;
+        }
+    }*/
 
+    
+}
 }
 
 #[embassy_executor::task]
-async fn serialsyncer(input: &mut Input<'_>, output: &mut Output<'_>) -> !{
+async fn serialsyncer() -> !{
+    let inputpin = unsafe{ PIN_9::steal() };
+    let outputpin = unsafe{ PIN_10::steal() };
+    let mut input = Input::new(inputpin, Pull::None);
+    let mut output = Output::new(outputpin, Level::Low);
     loop{
         input.wait_for_rising_edge().await;
         output.set_high();
-        block_for(Duration::from_micros(2));
+        Timer::after(Duration::from_micros(3)).await;
         output.set_low();
+        Timer::after(Duration::from_millis(12)).await;
     }
 }

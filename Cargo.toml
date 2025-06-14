@@ -35,6 +35,7 @@ embedded-graphics = "0.8.1"
 embedded-graphics-transform = {path = "embedded-graphics-transform"}
 tinybmp = "0.6.0"
 embedded-alloc = "0.5.1"
+bitflags = "2.9.1"
 
 [profile.release]
 debug = 2

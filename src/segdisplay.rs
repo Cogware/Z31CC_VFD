@@ -1,43 +1,143 @@
-const BITS_HEX: [&str; 41] = [ // placeholder all serial bits
-    "0x00000000000000000000000000000001", //amb second digit top left
-    "0x00000000000000000000000000000002", //amb second digit top 
-    "0x00000000000000000000000000000004", //amb second digit top right
-    "0x00000000000000000000000000000008", //amb second digit middle
-    "0x00000000000000000000000000000010", //amb second digit bottem right
-    "0x00000000000000000000000000000020", //amb second digit bottem
-    "0x00000000000000000000000000000040", //amb second digit bottem left
-    "0x00000000000000000000000000000080", //unused
-    "0x00000000000000000000000000000100", //amb first digit bottem right
-    "0x00000000000000000000000000000200", //amb first digit bottem
-    "0x00000000000000000000000000000400", //amb first digit bottem left
-    "0x00000000000000000000000000000800", //unused
-    "0x00000000000000000000000000001000", //amb first digit top left
-    "0x00000000000000000000000000002000", //amb first digit top
-    "0x00000000000000000000000000004000", //amb first digit top right
-    "0x00000000000000000000000000008000", //amb first digit middle
-    "0x00000000000000000000000000010000", //amb 1
-    "0x00000000000000000000000000020000", //amb -(neg)
-    "0x00000000000000000000000000040000", //tempguage -1
-    "0x00000000000000000000000000080000", //tempguage -2
-    "0x00000000000000000000000000100000", //tempguage -3
-    "0x00000000000000000000000000200000", //tempguage -4
-    "0x00000000000000000000000000400000", //tempguage -5
-    "0x00000000000000000000000000800000", //unused
-    "0x00000000000000000000000001000000", //tempguage +5
-    "0x00000000000000000000000002000000", //tempguage +4
-    "0x00000000000000000000000004000000", //tempguage +3
-    "0x00000000000000000000000008000000", //tempguage +2
-    "0x00000000000000000000000010000000", //set 1
-    "0x00000000000000000000000020000000", //set -(neg)
-    "0x00000000000000000000000040000000", //tempguage 0
-    "0x00000000000000000000000080000000", //tempguage +1
-    "0x00000000000000000000000100000000", //set first digit bottem right
-    "0x00000000000000000000000200000000", //set first digit bottem
-    "0x00000000000000000000000400000000", //set first digit bottem left 
-    "0x00000000000000000000000800000000", //unused
-    "0x00000000000000000000001000000000", //set first digit top left
-    "0x00000000000000000000002000000000", //set first digit top
-    "0x00000000000000000000004000000000", //set first digit top right
-    "0x00000000000000000000008000000000", //set first digit middle
-    "0x00000000000000000000010000000000", //unused
-];
+use bitflags::bitflags;
+
+bitflags! {
+    /// Every single segment/control bit in your display:
+    pub struct DisplayBits: u64 {
+        // ── Ambient “second” digit (ones) ──────────────────────────────────────
+        const AMB2_TL = 0x0000_0000_0000_0001; // top-left
+        const AMB2_T  = 0x0000_0000_0000_0002; // top
+        const AMB2_TR = 0x0000_0000_0000_0004; // top-right
+        const AMB2_M  = 0x0000_0000_0000_0008; // middle
+        const AMB2_BR = 0x0000_0000_0000_0010; // bottom-right
+        const AMB2_B  = 0x0000_0000_0000_0020; // bottom
+        const AMB2_BL = 0x0000_0000_0000_0040; // bottom-left
+
+        // ── Ambient “first” digit (tens) ───────────────────────────────────────
+        const AMB1_BR = 0x0000_0000_0000_0100;
+        const AMB1_B  = 0x0000_0000_0000_0200;
+        const AMB1_BL = 0x0000_0000_0000_0400;
+        const AMB1_TL = 0x0000_0000_0000_1000;
+        const AMB1_T  = 0x0000_0000_0000_2000;
+        const AMB1_TR = 0x0000_0000_0000_4000;
+        const AMB1_M  = 0x0000_0000_0000_8000;
+
+        // ── Ambient “1” & “–” indicators ───────────────────────────────────────
+        const AMB_ONE = 0x0000_0000_0001_0000;
+        const AMB_NEG = 0x0000_0000_0002_0000;
+
+        // ──       Temp gauge bars       ────────────────────────────────────────
+        const TG_NEG1 = 0x0000_0000_0004_0000;
+        const TG_NEG2 = 0x0000_0000_0008_0000;
+        const TG_NEG3 = 0x0000_0000_0010_0000;
+        const TG_NEG4 = 0x0000_0000_0020_0000;
+        const TG_NEG5 = 0x0000_0000_0040_0000;
+        const TG_PLUS5 = 0x0000_0000_0100_0000;
+        const TG_PLUS4 = 0x0000_0000_0200_0000;
+        const TG_PLUS3 = 0x0000_0000_0400_0000;
+        const TG_PLUS2 = 0x0000_0000_0800_0000;
+        const TG_ZERO  = 0x0000_0000_4000_0000;
+        const TG_PLUS1 = 0x0000_0000_8000_0000;
+
+        // ──  “Set” “1” & “–” indicators  ───────────────────────────────────────
+        const SET_ONE = 0x0000_0000_1000_0000;
+        const SET_NEG = 0x0000_0000_2000_0000;
+
+        // ── “Set” digit (first/tens) segments ──────────────────────────────────
+        const SET1_BR = 0x0000_0001_0000_0000;
+        const SET1_B  = 0x0000_0002_0000_0000;
+        const SET1_BL = 0x0000_0004_0000_0000;
+        const SET1_TL = 0x0000_0010_0000_0000;
+        const SET1_T  = 0x0000_0020_0000_0000;
+        const SET1_TR = 0x0000_0040_0000_0000;
+        const SET1_M  = 0x0000_0080_0000_0000;
+    }
+}
+
+impl DisplayBits {
+    /// Pattern for ambient “second” (ones) digit 0x0–0xF
+    pub fn amb_second(n: u8) -> DisplayBits {
+        match n {
+            0  => DisplayBits::AMB2_T  | DisplayBits::AMB2_TR | DisplayBits::AMB2_BR | DisplayBits::AMB2_B  | DisplayBits::AMB2_BL | DisplayBits::AMB2_TL,
+            1  => DisplayBits::AMB2_TR | DisplayBits::AMB2_BR,
+            2  => DisplayBits::AMB2_T  | DisplayBits::AMB2_TR | DisplayBits::AMB2_M | DisplayBits::AMB2_BL | DisplayBits::AMB2_B,
+            3  => DisplayBits::AMB2_T  | DisplayBits::AMB2_TR | DisplayBits::AMB2_M | DisplayBits::AMB2_BR | DisplayBits::AMB2_B,
+            4  => DisplayBits::AMB2_TL | DisplayBits::AMB2_M  | DisplayBits::AMB2_TR | DisplayBits::AMB2_BR,
+            5  => DisplayBits::AMB2_T  | DisplayBits::AMB2_TL | DisplayBits::AMB2_M | DisplayBits::AMB2_BR | DisplayBits::AMB2_B,
+            6  => DisplayBits::AMB2_T  | DisplayBits::AMB2_TL | DisplayBits::AMB2_M | DisplayBits::AMB2_BR | DisplayBits::AMB2_B  | DisplayBits::AMB2_BL,
+            7  => DisplayBits::AMB2_T  | DisplayBits::AMB2_TR | DisplayBits::AMB2_BR,
+            8  => DisplayBits::AMB2_T  | DisplayBits::AMB2_TR | DisplayBits::AMB2_BR | DisplayBits::AMB2_B  | DisplayBits::AMB2_BL | DisplayBits::AMB2_TL | DisplayBits::AMB2_M,
+            9  => DisplayBits::AMB2_T  | DisplayBits::AMB2_TR | DisplayBits::AMB2_TL | DisplayBits::AMB2_M  | DisplayBits::AMB2_BR | DisplayBits::AMB2_B,
+            0xA=> DisplayBits::AMB2_T  | DisplayBits::AMB2_TR | DisplayBits::AMB2_TL | DisplayBits::AMB2_M  | DisplayBits::AMB2_BL | DisplayBits::AMB2_BR,
+            0xB=> DisplayBits::AMB2_M  | DisplayBits::AMB2_BL | DisplayBits::AMB2_B | DisplayBits::AMB2_BR | DisplayBits::AMB2_TL,
+            0xC=> DisplayBits::AMB2_T  | DisplayBits::AMB2_TL | DisplayBits::AMB2_BL | DisplayBits::AMB2_B,
+            0xD=> DisplayBits::AMB2_M  | DisplayBits::AMB2_TR | DisplayBits::AMB2_BR | DisplayBits::AMB2_BL | DisplayBits::AMB2_B,
+            0xE=> DisplayBits::AMB2_T  | DisplayBits::AMB2_TL | DisplayBits::AMB2_M | DisplayBits::AMB2_BL | DisplayBits::AMB2_B,
+            0xF=> DisplayBits::AMB2_T  | DisplayBits::AMB2_TL | DisplayBits::AMB2_M | DisplayBits::AMB2_BL,
+            _  => DisplayBits::empty(),
+        }
+    }
+
+    /// Pattern for ambient “first” (tens) digit 0x0–0xF
+    pub fn amb_first(n: u8) -> DisplayBits {
+        match n {
+            0  => DisplayBits::AMB1_T  | DisplayBits::AMB1_TR | DisplayBits::AMB1_BR | DisplayBits::AMB1_B  | DisplayBits::AMB1_BL | DisplayBits::AMB1_TL,
+            1  => DisplayBits::AMB1_TR | DisplayBits::AMB1_BR,
+            2  => DisplayBits::AMB1_T  | DisplayBits::AMB1_TR | DisplayBits::AMB1_M | DisplayBits::AMB1_BL | DisplayBits::AMB1_B,
+            3  => DisplayBits::AMB1_T  | DisplayBits::AMB1_TR | DisplayBits::AMB1_M | DisplayBits::AMB1_BR | DisplayBits::AMB1_B,
+            4  => DisplayBits::AMB1_TL | DisplayBits::AMB1_M  | DisplayBits::AMB1_TR | DisplayBits::AMB1_BR,
+            5  => DisplayBits::AMB1_T  | DisplayBits::AMB1_TL | DisplayBits::AMB1_M | DisplayBits::AMB1_BR | DisplayBits::AMB1_B,
+            6  => DisplayBits::AMB1_T  | DisplayBits::AMB1_TL | DisplayBits::AMB1_M | DisplayBits::AMB1_BR | DisplayBits::AMB1_B  | DisplayBits::AMB1_BL,
+            7  => DisplayBits::AMB1_T  | DisplayBits::AMB1_TR | DisplayBits::AMB1_BR,
+            8  => DisplayBits::AMB1_T  | DisplayBits::AMB1_TR | DisplayBits::AMB1_BR | DisplayBits::AMB1_B  | DisplayBits::AMB1_BL | DisplayBits::AMB1_TL | DisplayBits::AMB1_M,
+            9  => DisplayBits::AMB1_T  | DisplayBits::AMB1_TR | DisplayBits::AMB1_TL | DisplayBits::AMB1_M  | DisplayBits::AMB1_BR | DisplayBits::AMB1_B,
+            0xA=> DisplayBits::AMB1_T  | DisplayBits::AMB1_TR | DisplayBits::AMB1_TL | DisplayBits::AMB1_M  | DisplayBits::AMB1_BL | DisplayBits::AMB1_BR,
+            0xB=> DisplayBits::AMB1_M  | DisplayBits::AMB1_BL | DisplayBits::AMB1_B | DisplayBits::AMB1_BR | DisplayBits::AMB1_TL,
+            0xC=> DisplayBits::AMB1_T  | DisplayBits::AMB1_TL | DisplayBits::AMB1_BL | DisplayBits::AMB1_B,
+            0xD=> DisplayBits::AMB1_M  | DisplayBits::AMB1_TR | DisplayBits::AMB1_BR | DisplayBits::AMB1_BL | DisplayBits::AMB1_B,
+            0xE=> DisplayBits::AMB1_T  | DisplayBits::AMB1_TL | DisplayBits::AMB1_M | DisplayBits::AMB1_BL | DisplayBits::AMB1_B,
+            0xF=> DisplayBits::AMB1_T  | DisplayBits::AMB1_TL | DisplayBits::AMB1_M | DisplayBits::AMB1_BL,
+            _  => DisplayBits::empty(),
+        }
+    }
+
+    /// Pattern for the “set” digit (tens) 0x0–0xF
+    pub fn set_first(n: u8) -> DisplayBits {
+        match n {
+            0  => DisplayBits::SET1_T  | DisplayBits::SET1_TR | DisplayBits::SET1_BR | DisplayBits::SET1_B  | DisplayBits::SET1_BL | DisplayBits::SET1_TL,
+            1  => DisplayBits::SET1_TR | DisplayBits::SET1_BR,
+            2  => DisplayBits::SET1_T  | DisplayBits::SET1_TR | DisplayBits::SET1_M | DisplayBits::SET1_BL | DisplayBits::SET1_B,
+            3  => DisplayBits::SET1_T  | DisplayBits::SET1_TR | DisplayBits::SET1_M | DisplayBits::SET1_BR | DisplayBits::SET1_B,
+            4  => DisplayBits::SET1_TL | DisplayBits::SET1_M  | DisplayBits::SET1_TR | DisplayBits::SET1_BR,
+            5  => DisplayBits::SET1_T  | DisplayBits::SET1_TL | DisplayBits::SET1_M | DisplayBits::SET1_BR | DisplayBits::SET1_B,
+            6  => DisplayBits::SET1_T  | DisplayBits::SET1_TL | DisplayBits::SET1_M | DisplayBits::SET1_BR | DisplayBits::SET1_B  | DisplayBits::SET1_BL,
+            7  => DisplayBits::SET1_T  | DisplayBits::SET1_TR | DisplayBits::SET1_BR,
+            8  => DisplayBits::SET1_T  | DisplayBits::SET1_TR | DisplayBits::SET1_BR | DisplayBits::SET1_B  | DisplayBits::SET1_BL | DisplayBits::SET1_TL | DisplayBits::SET1_M,
+            9  => DisplayBits::SET1_T  | DisplayBits::SET1_TR | DisplayBits::SET1_TL | DisplayBits::SET1_M  | DisplayBits::SET1_BR | DisplayBits::SET1_B,
+            0xA=> DisplayBits::SET1_T  | DisplayBits::SET1_TR | DisplayBits::SET1_TL | DisplayBits::SET1_M  | DisplayBits::SET1_BL | DisplayBits::SET1_BR,
+            0xB=> DisplayBits::SET1_M  | DisplayBits::SET1_BL | DisplayBits::SET1_B | DisplayBits::SET1_BR | DisplayBits::SET1_TL,
+            0xC=> DisplayBits::SET1_T  | DisplayBits::SET1_TL | DisplayBits::SET1_BL | DisplayBits::SET1_B,
+            0xD=> DisplayBits::SET1_M  | DisplayBits::SET1_TR | DisplayBits::SET1_BR | DisplayBits::SET1_BL | DisplayBits::SET1_B,
+            0xE=> DisplayBits::SET1_T  | DisplayBits::SET1_TL | DisplayBits::SET1_M | DisplayBits::SET1_BL | DisplayBits::SET1_B,
+            0xF=> DisplayBits::SET1_T  | DisplayBits::SET1_TL | DisplayBits::SET1_M | DisplayBits::SET1_BL,
+            _  => DisplayBits::empty(),
+        }
+    }
+
+    /// Build the thermometer‐style gauge for levels –5…+5.
+    pub const fn gauge(level: u8) -> DisplayBits {
+        match level {
+             0 => DisplayBits::TG_NEG5,
+             1 => DisplayBits::TG_NEG4,
+             2 => DisplayBits::TG_NEG3,
+             3 => DisplayBits::TG_NEG2,
+             4 => DisplayBits::TG_NEG1,
+             5 => DisplayBits::TG_ZERO,
+             6 => DisplayBits::TG_PLUS1,
+             7 => DisplayBits::TG_PLUS2,
+             8 => DisplayBits::TG_PLUS3,
+             9 => DisplayBits::TG_PLUS4,
+             10 => DisplayBits::TG_PLUS5,
+            _ => DisplayBits::empty(),
+        }
+    }
+}
