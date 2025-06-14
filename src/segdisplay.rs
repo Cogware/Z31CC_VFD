@@ -1,6 +1,33 @@
 use bitflags::bitflags;
 
 bitflags! {
+    /*pub struct Segbits: u32{
+        0x0000_0001, // freshair
+        0x0000_0002, // face
+        0x0000_0004, // fan
+        0x0000_0008, // defrost
+        0x0000_0010, // feet
+        0x0000_0020, // ACGas
+        0x0000_0040, // Unused
+        0x0000_0080, // Celcius
+        0x0000_0100, // Set second bottem right
+        0x0000_0200, // Set second bottem
+        0x0000_0400, // set second bottem left
+        0x0000_0800, // filler backer
+        0x0000_1000, // farenheit
+        0x0000_2000, // A/C
+        0x0000_4000, // heat icon?
+        0x0000_8000, // recirc
+        0x0001_0000, // bit 16
+        0x0002_0000, // bit 17
+        0x0004_0000, // bit 18
+        0x0008_0000, // bit 19
+        0x0010_0000, // set second top left BEST GUESS 4 SECOND GAP
+        0x0020_0000, // set second top
+        0x0040_0000, // set second topright
+        0x0080_0000, // set second middle
+    }*/
+
     /// Every single segment/control bit in your display:
     pub struct DisplayBits: u64 {
         // ── Ambient “second” digit (ones) ──────────────────────────────────────
@@ -50,6 +77,8 @@ bitflags! {
         const SET1_T  = 0x0000_0020_0000_0000;
         const SET1_TR = 0x0000_0040_0000_0000;
         const SET1_M  = 0x0000_0080_0000_0000;
+
+        const EMPTY = 0x0000_0000_0000_0000;
     }
 }
 
@@ -99,6 +128,21 @@ impl DisplayBits {
             _  => DisplayBits::empty(),
         }
     }
+    pub fn amb_neg(b: bool) -> DisplayBits{
+        if b == true
+        {
+            return DisplayBits::AMB_NEG
+        }
+        DisplayBits::EMPTY
+    }
+
+    pub fn amb_hund(b: bool) -> DisplayBits{
+        if b == true
+        {
+            return DisplayBits::AMB_ONE
+        }
+        DisplayBits::EMPTY
+    }
 
     /// Pattern for the “set” digit (tens) 0x0–0xF
     pub fn set_first(n: u8) -> DisplayBits {
@@ -124,7 +168,7 @@ impl DisplayBits {
     }
 
     /// Build the thermometer‐style gauge for levels –5…+5.
-    pub const fn gauge(level: u8) -> DisplayBits {
+    pub fn gauge(level: u8) -> DisplayBits {
         match level {
              0 => DisplayBits::TG_NEG5,
              1 => DisplayBits::TG_NEG4,
@@ -139,5 +183,22 @@ impl DisplayBits {
              10 => DisplayBits::TG_PLUS5,
             _ => DisplayBits::empty(),
         }
+    }
+
+    pub fn set_amb(input: i8) -> DisplayBits {
+        let mut base = DisplayBits::EMPTY;
+        let mut n = input;
+        if n < 0{
+            n = n * -1;
+            base = base | DisplayBits::amb_neg(true);
+        }
+        if n >=100{
+            n = n - 100;
+            base = base | DisplayBits::amb_hund(true);
+        }
+        let tens = n / 10;
+        let ones = n % 10;
+        base = base | DisplayBits::amb_first(tens.try_into().unwrap()) | DisplayBits::amb_second(ones.try_into().unwrap());
+        return base;
     }
 }

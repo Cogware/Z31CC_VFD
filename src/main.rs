@@ -43,12 +43,12 @@ async fn main(spawner: Spawner) {
     }
 
     let p = embassy_rp::init(Default::default());
-    block_for(Duration::from_millis(2));
 
     let sda = p.PIN_2;
     let scl = p.PIN_3;
     let mut i2c = i2c::I2c::new_blocking(p.I2C1, scl, sda, embassy_rp::i2c::Config::default());
     let chipaddr: u8 = 0x38;
+    block_for(Duration::from_millis(10));
 
     i2c.blocking_write(chipaddr, &[0x49]).unwrap();
     i2c.blocking_write(chipaddr, &[0x00, 0xFF, 0xFF, 0xFF, 0xFF])
@@ -94,10 +94,10 @@ async fn main(spawner: Spawner) {
     //vfd.set_brightness(128).unwrap();
     // let mut ticker = Ticker::every(Duration::from_secs(1));
 
-    /*const NUM_LEDS: usize = 1;
+    const NUM_LEDS: usize = 1;
     let mut data = [RGB8::default(); NUM_LEDS];
     let program = PioWs2812Program::new(&mut common);
-    let mut ws2812 = PioWs2812::new(&mut common, sm0, p.DMA_CH1, p.PIN_21, &program);*/
+    let mut ws2812 = PioWs2812::new(&mut common, sm0, p.DMA_CH1, p.PIN_21, &program);
 
     // Wrap flash as block device
     let mut ticker = Ticker::every(Duration::from_millis(100));
@@ -115,32 +115,34 @@ async fn main(spawner: Spawner) {
     spawner.spawn(serialsyncer()).unwrap();
     
     loop {
-        let bitfield: u128 = 0x1FFFFFFFFFF;
-        for i in 0..128 {
-            if (bitfield >> i) & 1 == 1 {
-                let single_bit: u128 = 1u128 << i;
+        for j in 0..(256 * 5) {
+            let bitfield: u128 = 0x1FFFFFFFFFF;
+    //    for i in 0..128 {
+    //        if (bitfield >> i) & 1 == 1 {
+    //            let single_bit: u128 = 1u128 << i;
     
                 for i in (0..128).rev(){
                 clock.set_low();
                 block_for(Duration::from_micros(8));
                 clock.set_high();
                 block_for(Duration::from_micros(2));
-                let gpio_level = (single_bit >> i) & 1 !=0;
+                let gpio_level = (bitfield >> i) & 1 !=0;
                 dataserial.set_level(gpio_level.into());
             }
-        }
-        Timer::after(Duration::from_millis(500)).await;
-    }
-        /*for j in 0..(256 * 5) {
+
+            //for bit in 0..32{
+            let value: u32 = 0x0080_0000;//1 << bit;
+            let dispvalue = value.to_le_bytes();
+            i2c.blocking_write(chipaddr, &[0x00, dispvalue[0], dispvalue[1], dispvalue[2]]).unwrap();
+            Timer::after(Duration::from_millis(1000)).await;
+            //}
+        
             for i in 0..NUM_LEDS {
                 data[i] =
                     wheel((((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255) as u8);
             }
             ws2812.write(&data).await;
-
-            ticker.next().await;
         }
-    }*/
 
     
 }
