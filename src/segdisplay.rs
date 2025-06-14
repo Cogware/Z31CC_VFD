@@ -22,7 +22,7 @@ bitflags! {
         0x0002_0000, // bit 17
         0x0004_0000, // bit 18
         0x0008_0000, // bit 19
-        0x0010_0000, // set second top left BEST GUESS 4 SECOND GAP
+        0x0010_0000, // set second top left 
         0x0020_0000, // set second top
         0x0040_0000, // set second topright
         0x0080_0000, // set second middle
