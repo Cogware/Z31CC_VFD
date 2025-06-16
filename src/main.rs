@@ -8,22 +8,21 @@ use smart_leds::RGB8;
 use z31_hvac::temp::Thermistor;
 use z31_hvac::*;
 
-
 use core::cell::RefCell;
 use core::u128;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_executor::{Spawner, task};
 use embassy_rp::adc::{Adc, Channel, Config};
 use embassy_rp::gpio::{Input, Level, Output, Pull};
-use embassy_rp::peripherals::{PIN_10, PIN_9, PIO0};
+use embassy_rp::peripherals::{PIN_9, PIN_10, PIO0};
 use embassy_rp::pio::{InterruptHandler as PIOInt, Pio};
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
 use embassy_rp::{bind_interrupts, block, i2c};
-use embassy_time::{block_for, Duration, Ticker, Timer};
+use embassy_time::{Duration, Ticker, Timer, block_for};
 
-use display::Display;
 use embedded_alloc::Heap;
+use vfddisplay::Display;
 use {defmt_rtt as _, panic_probe as _};
 
 bind_interrupts!(struct PIOIrqs {
@@ -105,7 +104,6 @@ async fn main(spawner: Spawner) {
     //vfd.draw_boot_image().await;
     let mut clock = Output::new(p.PIN_6, Level::Low);
     let mut dataserial = Output::new(p.PIN_5, Level::Low);
-    
 
     //let vals = therm.measure_temp();
     //vfd.ambient_temp = vals[0] as i8;
@@ -113,48 +111,46 @@ async fn main(spawner: Spawner) {
 
     //vfd.update_display();
     spawner.spawn(serialsyncer()).unwrap();
-    
+
     loop {
         for j in 0..(256 * 5) {
             let bitfield: u128 = 0x1FFFFFFFFFF;
-    //    for i in 0..128 {
-    //        if (bitfield >> i) & 1 == 1 {
-    //            let single_bit: u128 = 1u128 << i;
-    
-                for i in (0..128).rev(){
+            //    for i in 0..128 {
+            //        if (bitfield >> i) & 1 == 1 {
+            //            let single_bit: u128 = 1u128 << i;
+
+            for i in (0..128).rev() {
                 clock.set_low();
                 block_for(Duration::from_micros(8));
                 clock.set_high();
                 block_for(Duration::from_micros(2));
-                let gpio_level = (bitfield >> i) & 1 !=0;
+                let gpio_level = (bitfield >> i) & 1 != 0;
                 dataserial.set_level(gpio_level.into());
             }
 
             //for bit in 0..32{
-            let value: u32 = 0x0080_0000;//1 << bit;
+            let value: u32 = 0x0080_0000; //1 << bit;
             let dispvalue = value.to_le_bytes();
-            i2c.blocking_write(chipaddr, &[0x00, dispvalue[0], dispvalue[1], dispvalue[2]]).unwrap();
+            i2c.blocking_write(chipaddr, &[0x00, dispvalue[0], dispvalue[1], dispvalue[2]])
+                .unwrap();
             Timer::after(Duration::from_millis(1000)).await;
             //}
-        
+
             for i in 0..NUM_LEDS {
-                data[i] =
-                    wheel((((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255) as u8);
+                data[i] = wheel((((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255) as u8);
             }
             ws2812.write(&data).await;
         }
-
-    
-}
+    }
 }
 
 #[embassy_executor::task]
-async fn serialsyncer() -> !{
-    let inputpin = unsafe{ PIN_9::steal() };
-    let outputpin = unsafe{ PIN_10::steal() };
+async fn serialsyncer() -> ! {
+    let inputpin = unsafe { PIN_9::steal() };
+    let outputpin = unsafe { PIN_10::steal() };
     let mut input = Input::new(inputpin, Pull::None);
     let mut output = Output::new(outputpin, Level::Low);
-    loop{
+    loop {
         input.wait_for_rising_edge().await;
         output.set_high();
         Timer::after(Duration::from_micros(3)).await;
