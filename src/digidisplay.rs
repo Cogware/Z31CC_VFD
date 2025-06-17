@@ -1,8 +1,8 @@
 use bitflags::bitflags;
-use embassy_rp::{gpio::{Input, Level, Output, Pull}, peripherals::{PIN_10, PIN_9}};
-use embassy_time::{Duration, Timer};
+use embassy_rp::{gpio::{Input, Level, Output, Pull}, i2c::{Blocking, I2c}, peripherals::{I2C1, PIN_10, PIN_9}};
+use embassy_time::{block_for, Duration, Timer};
 
-use crate::climatecontrol::ClimateControlMode;
+use crate::climatecontrol::{ClimateControlBacker, ClimateControlMode};
 
 bitflags! {
     //      Statically driven side of display(through driver IC over I2C)
@@ -18,7 +18,7 @@ bitflags! {
         const BACKGROUND = 0x0000_0800; // filler backer
         const FARENHEIT = 0x0000_1000; // farenheit temp indicator
         const AC = 0x0000_2000;
-        const HEAT = 0x0000_4000; // heat icon
+        const HEAT = 0x0000_4000; // heat icon when watercock is active
         const RECIRC = 0x0000_8000;
         // ──   Set “second” digit (ones)  ──────────────────────────────────────
         const SET2_TL = 0x0010_0000;
@@ -514,6 +514,10 @@ impl SerialDisplayBits {
 #[allow(unused)]
 impl SegDisplayBits {
 
+    pub fn get_bitsout(input: SegDisplayBits) -> u32{
+        input.bits()
+    }
+
     pub fn set_second(n: i8) -> SegDisplayBits{
         match n {
             0 => {
@@ -634,11 +638,11 @@ impl SegDisplayBits {
 
     pub fn mode(input: &ClimateControlMode) -> SegDisplayBits{
         match input{
-            ClimateControlMode::Face => SegDisplayBits::FACE | SegDisplayBits::BACKGROUND,
-            ClimateControlMode::Feet => SegDisplayBits::FEET | SegDisplayBits::BACKGROUND,
-            ClimateControlMode::FaceFeet => SegDisplayBits::FACE | SegDisplayBits::FEET | SegDisplayBits::BACKGROUND,
-            ClimateControlMode::FeetDef => SegDisplayBits::FEET | SegDisplayBits::DEFROST | SegDisplayBits::BACKGROUND,
-            ClimateControlMode::Def => SegDisplayBits::DEFROST | SegDisplayBits::BACKGROUND,
+            ClimateControlMode::Face => SegDisplayBits::FACE | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN,
+            ClimateControlMode::Feet => SegDisplayBits::FEET | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN,
+            ClimateControlMode::FaceFeet => SegDisplayBits::FACE | SegDisplayBits::FEET | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN,
+            ClimateControlMode::FeetDef => SegDisplayBits::FEET | SegDisplayBits::DEFROST | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN,
+            ClimateControlMode::Def => SegDisplayBits::DEFROST | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN,
         }
     }
 
@@ -661,6 +665,55 @@ impl SegDisplayBits {
             return SegDisplayBits::HEAT
         }
         SegDisplayBits::EMPTY
+    }
+
+
+}
+
+pub struct DigiDisplay<'a>{
+    i2c: I2c<'a, I2C1, Blocking>,
+    serialclock: Output<'a>,
+    serialdata: Output<'a>,
+    chipaddr: u8,
+
+}
+
+impl<'a> DigiDisplay<'a>{
+    pub fn new(mut i2c: I2c<'a, I2C1, Blocking>, serialclock: Output<'a>, serialdata: Output<'a>) -> Self{
+        let chipaddr = 0x38;
+        block_for(Duration::from_millis(2));
+        i2c.blocking_write(chipaddr, &[0x49]).unwrap();
+
+        DigiDisplay { i2c, serialclock, serialdata, chipaddr }
+
+    }
+
+    async fn write_serial(&mut self, input: u128){
+        for i in (0..128).rev() {
+            self.serialclock.set_low();
+            Timer::after(Duration::from_micros(8)).await;
+            self.serialclock.set_high();
+            Timer::after(Duration::from_micros(2)).await;
+            let gpio_level = (input >> i) & 1 != 0;
+            self.serialdata.set_level(gpio_level.into());
+        }
+    }
+
+    fn write_ic(&mut self, input: u32){
+        let dispvalue = input.to_le_bytes();
+        self.i2c.blocking_write(self.chipaddr, &[0x00, dispvalue[0], dispvalue[1], dispvalue[2]])
+            .unwrap();
+    }
+
+    pub async fn update_display(&mut self, settings: &ClimateControlBacker){
+        let mut serialdata = SerialDisplayBits::setup_amb(settings.ambient_temp());
+        let mut segdata = SegDisplayBits::mode(settings.mode()) | SegDisplayBits::recirc(settings.recirc_toggle()) | SegDisplayBits::ac_toggle(settings.ac_toggle()) | SegDisplayBits::c_or_f(settings.displaymode());
+        let (serialset, segset) = SerialDisplayBits::setup_set(settings.set_temp());
+        serialdata = serialdata | serialset;
+        segdata = segdata | SegDisplayBits::set_second(segset);
+
+        self.write_serial(serialdata.bits().into()).await;
+        self.write_ic(segdata.bits());
     }
 
 

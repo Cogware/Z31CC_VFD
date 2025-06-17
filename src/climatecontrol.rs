@@ -15,6 +15,7 @@ pub struct ClimateControlBacker {
     fan_speed: u8,
     ambient_temp: i8,
     set_temp: i8,
+    displaymode: bool,
 }
 
 #[allow(unused)]
@@ -26,6 +27,7 @@ impl ClimateControlBacker {
         let mut fan_speed = 0;
         let mut ambient_temp: i8 = 0;
         let mut set_temp: i8 = 0;
+        let mut displaymode: bool = false;
         let cc = ClimateControlBacker {
             mode,
             ac_toggle,
@@ -33,6 +35,7 @@ impl ClimateControlBacker {
             fan_speed,
             ambient_temp,
             set_temp,
+            displaymode
         };
         cc
     }
@@ -75,5 +78,13 @@ impl ClimateControlBacker {
 
     pub fn set_set_temp(&mut self, set_temp: i8) {
         self.set_temp = set_temp;
+    }
+    
+    pub fn displaymode(&self) -> bool {
+        self.displaymode
+    }
+    
+    pub fn set_displaymode(&mut self, displaymode: bool) {
+        self.displaymode = displaymode;
     }
 }
