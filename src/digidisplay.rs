@@ -81,7 +81,7 @@ bitflags! {
         const EMPTY = 0x0000_0000_0000_0000;
     }
 }
-
+#[allow(unused)]
 impl SerialDisplayBits {
     pub fn get_serialout(input: SerialDisplayBits) -> u128 {
         input.bits().into()

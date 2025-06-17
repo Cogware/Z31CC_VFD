@@ -16,7 +16,7 @@ use embedded_graphics::{
 };
 use embedded_graphics_transform::Transpose;
 
-use crate::climatecontrol::ClimateControlMode;
+use crate::climatecontrol::ClimateControlBacker;
 use crate::{map_i32, vfdgraphics::Graphics};
 
 pub type InternalFrameBuffer = Framebuffer<
@@ -40,10 +40,12 @@ pub struct Display<'a> {
     graphics: Graphics,
     temp_gauge: u8,
     fan_gauge: u8,
+    backend: &'a ClimateControlBacker,
 }
 
 impl<'a> Display<'a> {
     pub fn new(
+        backend: &'a ClimateControlBacker,
         spi_bus: SpiDeviceWithConfig<
             'a,
             CriticalSectionRawMutex,
@@ -68,6 +70,7 @@ impl<'a> Display<'a> {
             graphics,
             temp_gauge,
             fan_gauge,
+            backend,
         };
         d
     }
@@ -96,18 +99,18 @@ impl<'a> Display<'a> {
 
     fn draw_mode(&mut self) {
         self.graphics
-            .draw_climate_control_mode(&self.mode, &mut self.framebuffer);
+            .draw_climate_control_mode(self.backend.mode(), &mut self.framebuffer);
         self.graphics
-            .draw_ac_toggle(self.ac_toggle, &mut self.framebuffer);
+            .draw_ac_toggle(self.backend.ac_toggle(), &mut self.framebuffer);
         self.graphics
-            .draw_recirc_toggle(self.recirc_toggle, &mut self.framebuffer);
+            .draw_recirc_toggle(self.backend.recirc_toggle(), &mut self.framebuffer);
     }
 
     fn draw_temps(&mut self) {
         self.graphics
-            .draw_internal_temp(self.internal_temp, &mut self.framebuffer);
+            .draw_internal_temp(self.backend.set_temp(), &mut self.framebuffer);
         self.graphics
-            .draw_ambient_temp(self.ambient_temp, &mut self.framebuffer);
+            .draw_ambient_temp(self.backend.ambient_temp(), &mut self.framebuffer);
     }
 
     fn draw_fan_gauge(&mut self) {
