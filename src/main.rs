@@ -5,11 +5,12 @@ extern crate alloc;
 
 use embassy_rp::pio_programs::ws2812::{PioWs2812, PioWs2812Program};
 use smart_leds::RGB8;
+use z31_hvac::climatecontrol::ClimateControlBacker;
+use z31_hvac::digidisplay::DigiDisplay;
 use z31_hvac::temp::Thermistor;
 use z31_hvac::*;
 
 use core::cell::RefCell;
-use core::u128;
 use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_executor::{Spawner, task};
 use embassy_rp::adc::{Adc, Channel, Config};
@@ -43,74 +44,36 @@ async fn main(spawner: Spawner) {
 
     let p = embassy_rp::init(Default::default());
 
-    let sda = p.PIN_2;
-    let scl = p.PIN_3;
-    let mut i2c = i2c::I2c::new_blocking(p.I2C1, scl, sda, embassy_rp::i2c::Config::default());
-    let chipaddr: u8 = 0x38;
-    
-
-    i2c.blocking_write(chipaddr, &[0x49]).unwrap();
-    i2c.blocking_write(chipaddr, &[0x00, 0xFF, 0xFF, 0xFF, 0xFF])
-        .unwrap();
-
-    // let acset = false;
-    // let recircset = false;
-    // let defset = false;
-
     // Setup pio state machine for i2s output
     let Pio {
         mut common, sm0, ..
     } = Pio::new(p.PIO0, PIOIrqs);
 
-    /*let adc = Adc::new_blocking(p.ADC, Config::default());
+    let sda = p.PIN_2;
+    let scl = p.PIN_3;
+    let serialclock = Output::new(p.PIN_6, Level::Low);
+    let serialdata = Output::new(p.PIN_5, Level::Low);
+    let i2c = i2c::I2c::new_blocking(p.I2C1, scl, sda, embassy_rp::i2c::Config::default());
 
-    let ambtemp = Channel::new_pin(p.PIN_26, Pull::None);
-    let onboardts = Channel::new_temp_sensor(p.ADC_TEMP_SENSOR);
-
-    let mut therm = Thermistor::new(ambtemp, onboardts, adc);
-
-    let sclk = p.PIN_22;
-    let mosi = p.PIN_23;
-    let miso = p.PIN_20;
-
-    let cs = Output::new(p.PIN_25, Level::High);
-    let rst = Output::new(p.PIN_24, Level::High);*/
-
-    //let mut config = spi::Config::default();
-    //config.frequency = 4_000_000;
-
-    //let mut config1 = spi::Config::default();
-    //config1.frequency = 4_000_000;
-
-    //let spi = Spi::new_blocking(p.SPI0, sclk, mosi, miso, config);
-
-    //let spibus: Mutex<CriticalSectionRawMutex, RefCell<_>> = Mutex::new(RefCell::new(spi));
-
-    //let vfd_spi = SpiDeviceWithConfig::new(&spibus, cs, config1);
-
-    //let mut vfd = Display::new(vfd_spi, rst);
-
-    //vfd.set_brightness(128).unwrap();
-    // let mut ticker = Ticker::every(Duration::from_secs(1));
+    spawner.spawn(digidisplay::serialsyncer()).unwrap();
+    let backend = ClimateControlBacker::default();
+    let mut digidisp = DigiDisplay::new(i2c, serialclock, serialdata);
 
     const NUM_LEDS: usize = 1;
     let mut data = [RGB8::default(); NUM_LEDS];
     let program = PioWs2812Program::new(&mut common);
     let mut ws2812 = PioWs2812::new(&mut common, sm0, p.DMA_CH1, p.PIN_21, &program);
 
-    // Wrap flash as block device
-    let mut ticker = Ticker::every(Duration::from_millis(100));
 
-    //vfd.draw_boot_image().await;
-    let mut clock = Output::new(p.PIN_6, Level::Low);
-    let mut dataserial = Output::new(p.PIN_5, Level::Low);
+    
 
+    /*let adc = Adc::new_blocking(p.ADC, Config::default());
+    let ambtemp = Channel::new_pin(p.PIN_26, Pull::None);
+    let onboardts = Channel::new_temp_sensor(p.ADC_TEMP_SENSOR);
+    let mut therm = Thermistor::new(ambtemp, onboardts, adc);*/
     //let vals = therm.measure_temp();
     //vfd.ambient_temp = vals[0] as i8;
     //vfd.internal_temp = vals[1] as i8;
-
-    //vfd.update_display();
-    spawner.spawn(digidisplay::serialsyncer()).unwrap();
 
     loop {
         for j in 0..(256 * 5) {
@@ -118,8 +81,34 @@ async fn main(spawner: Spawner) {
                 data[i] = wheel((((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255) as u8);
             }
             ws2812.write(&data).await;
+            digidisp.update_display(&backend).await
         }
     }
 }
 
 
+//-----------------------------------------VFD stuff for later to be in a seperate fn------------------------------------------
+    /*let sclk = p.PIN_22;
+    let mosi = p.PIN_23;
+    let miso = p.PIN_20;
+
+    let cs = Output::new(p.PIN_25, Level::High);
+    let rst = Output::new(p.PIN_24, Level::High);
+
+    let mut config = spi::Config::default();
+    config.frequency = 4_000_000;
+
+    let mut config1 = spi::Config::default();
+    config1.frequency = 4_000_000;
+
+    let spi = Spi::new_blocking(p.SPI0, sclk, mosi, miso, config);
+
+    let spibus: Mutex<CriticalSectionRawMutex, RefCell<_>> = Mutex::new(RefCell::new(spi));
+
+    let vfd_spi = SpiDeviceWithConfig::new(&spibus, cs, config1);
+
+    let mut vfd = Display::new(vfd_spi, rst);
+
+    vfd.set_brightness(128).unwrap();
+    vfd.draw_boot_image().await;
+    vfd.update_display();*/

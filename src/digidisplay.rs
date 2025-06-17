@@ -706,7 +706,7 @@ impl<'a> DigiDisplay<'a>{
     }
 
     pub async fn update_display(&mut self, settings: &ClimateControlBacker){
-        let mut serialdata = SerialDisplayBits::setup_amb(settings.ambient_temp());
+        let mut serialdata = SerialDisplayBits::setup_amb(settings.ambient_temp()); //TODO add guage from temp set
         let mut segdata = SegDisplayBits::mode(settings.mode()) | SegDisplayBits::recirc(settings.recirc_toggle()) | SegDisplayBits::ac_toggle(settings.ac_toggle()) | SegDisplayBits::c_or_f(settings.displaymode());
         let (serialset, segset) = SerialDisplayBits::setup_set(settings.set_temp());
         serialdata = serialdata | serialset;
