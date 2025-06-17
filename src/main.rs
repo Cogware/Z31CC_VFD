@@ -14,7 +14,7 @@ use embassy_embedded_hal::shared_bus::blocking::spi::SpiDeviceWithConfig;
 use embassy_executor::{Spawner, task};
 use embassy_rp::adc::{Adc, Channel, Config};
 use embassy_rp::gpio::{Input, Level, Output, Pull};
-use embassy_rp::peripherals::{PIN_9, PIN_10, PIO0};
+use embassy_rp::peripherals::PIO0;
 use embassy_rp::pio::{InterruptHandler as PIOInt, Pio};
 use embassy_rp::spi;
 use embassy_rp::spi::Spi;
@@ -110,7 +110,7 @@ async fn main(spawner: Spawner) {
     //vfd.internal_temp = vals[1] as i8;
 
     //vfd.update_display();
-    spawner.spawn(serialsyncer()).unwrap();
+    spawner.spawn(digidisplay::serialsyncer()).unwrap();
 
     loop {
         for j in 0..(256 * 5) {
@@ -144,17 +144,4 @@ async fn main(spawner: Spawner) {
     }
 }
 
-#[embassy_executor::task]
-async fn serialsyncer() -> ! {
-    let inputpin = unsafe { PIN_9::steal() };
-    let outputpin = unsafe { PIN_10::steal() };
-    let mut input = Input::new(inputpin, Pull::None);
-    let mut output = Output::new(outputpin, Level::Low);
-    loop {
-        input.wait_for_rising_edge().await;
-        output.set_high();
-        Timer::after(Duration::from_micros(3)).await;
-        output.set_low();
-        Timer::after(Duration::from_millis(12)).await;
-    }
-}
+

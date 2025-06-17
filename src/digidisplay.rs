@@ -1,8 +1,12 @@
 use bitflags::bitflags;
+use embassy_rp::{gpio::{Input, Level, Output, Pull}, peripherals::{PIN_10, PIN_9}};
+use embassy_time::{Duration, Timer};
+
+use crate::climatecontrol::ClimateControlMode;
 
 bitflags! {
     //      Statically driven side of display(through driver IC over I2C)
-    pub struct Segbits: u32{
+    pub struct SegDisplayBits: u32{
         // ──     General indicators     ───────────────────────────────────────
         const FRESH_AIR = 0x0000_0001;
         const FACE = 0x0000_0002;
@@ -309,6 +313,7 @@ impl SerialDisplayBits {
             _ => SerialDisplayBits::empty(),
         }
     }
+
     fn amb_neg(b: bool) -> SerialDisplayBits {
         if b == true {
             return SerialDisplayBits::AMB_NEG;
@@ -435,6 +440,20 @@ impl SerialDisplayBits {
         }
     }
 
+    pub fn set_neg(b: bool) -> SerialDisplayBits{
+        if b == true {
+            return SerialDisplayBits::SET_NEG;
+        }
+        SerialDisplayBits::EMPTY
+    }
+
+    pub fn set_hund(b: bool) -> SerialDisplayBits {
+        if b == true {
+            return SerialDisplayBits::SET_ONE;
+        }
+        SerialDisplayBits::EMPTY
+    }
+
     /// Build the thermometer‐style gauge for levels –5…+5.
     fn gauge(level: u8) -> SerialDisplayBits {
         match level {
@@ -453,7 +472,7 @@ impl SerialDisplayBits {
         }
     }
 
-    pub fn set_amb(input: i8) -> SerialDisplayBits {
+    pub fn setup_amb(input: i8) -> SerialDisplayBits {
         let mut base = SerialDisplayBits::EMPTY;
         let mut n = input;
         if n < 0 {
@@ -470,5 +489,195 @@ impl SerialDisplayBits {
             | SerialDisplayBits::amb_first(tens.try_into().unwrap())
             | SerialDisplayBits::amb_second(ones.try_into().unwrap());
         return base;
+    }
+
+    pub fn setup_set(input: i8) -> (SerialDisplayBits, i8){
+        let mut base = SerialDisplayBits::EMPTY;
+        let mut n = input;
+        if n < 0 {
+            n = n * -1;
+            base = base | SerialDisplayBits::set_neg(true);
+        }
+        if n >= 100 {
+            n = n - 100;
+            base = base | SerialDisplayBits::set_hund(true);
+        }
+        let tens = n / 10;
+        let ones = n % 10;
+        base = base
+            | SerialDisplayBits::amb_first(tens.try_into().unwrap());
+        return (base, ones);
+    }
+
+}
+
+#[allow(unused)]
+impl SegDisplayBits {
+
+    pub fn set_second(n: i8) -> SegDisplayBits{
+        match n {
+            0 => {
+                SegDisplayBits::SET2_T
+                    | SegDisplayBits::SET2_TR
+                    | SegDisplayBits::SET2_BR
+                    | SegDisplayBits::SET2_B
+                    | SegDisplayBits::SET2_BL
+                    | SegDisplayBits::SET2_TL
+            }
+            1 => SegDisplayBits::SET2_TR | SegDisplayBits::SET2_BR,
+            2 => {
+                SegDisplayBits::SET2_T
+                    | SegDisplayBits::SET2_TR
+                    | SegDisplayBits::SET2_M
+                    | SegDisplayBits::SET2_BL
+                    | SegDisplayBits::SET2_B
+            }
+            3 => {
+                SegDisplayBits::SET2_T
+                    | SegDisplayBits::SET2_TR
+                    | SegDisplayBits::SET2_M
+                    | SegDisplayBits::SET2_BR
+                    | SegDisplayBits::SET2_B
+            }
+            4 => {
+                SegDisplayBits::SET2_TL
+                    | SegDisplayBits::SET2_M
+                    | SegDisplayBits::SET2_TR
+                    | SegDisplayBits::SET2_BR
+            }
+            5 => {
+                SegDisplayBits::SET2_T
+                    | SegDisplayBits::SET2_TL
+                    | SegDisplayBits::SET2_M
+                    | SegDisplayBits::SET2_BR
+                    | SegDisplayBits::SET2_B
+            }
+            6 => {
+                SegDisplayBits::SET2_T
+                    | SegDisplayBits::SET2_TL
+                    | SegDisplayBits::SET2_M
+                    | SegDisplayBits::SET2_BR
+                    | SegDisplayBits::SET2_B
+                    | SegDisplayBits::SET2_BL
+            }
+            7 => {
+                SegDisplayBits::SET2_T | SegDisplayBits::SET2_TR | SegDisplayBits::SET2_BR
+            }
+            8 => {
+                SegDisplayBits::SET2_T
+                    | SegDisplayBits::SET2_TR
+                    | SegDisplayBits::SET2_BR
+                    | SegDisplayBits::SET2_B
+                    | SegDisplayBits::SET2_BL
+                    | SegDisplayBits::SET2_TL
+                    | SegDisplayBits::SET2_M
+            }
+            9 => {
+                SegDisplayBits::SET2_T
+                    | SegDisplayBits::SET2_TR
+                    | SegDisplayBits::SET2_TL
+                    | SegDisplayBits::SET2_M
+                    | SegDisplayBits::SET2_BR
+                    | SegDisplayBits::SET2_B
+            }
+            0xA => {
+                SegDisplayBits::SET2_T
+                    | SegDisplayBits::SET2_TR
+                    | SegDisplayBits::SET2_TL
+                    | SegDisplayBits::SET2_M
+                    | SegDisplayBits::SET2_BL
+                    | SegDisplayBits::SET2_BR
+            }
+            0xB => {
+                SegDisplayBits::SET2_M
+                    | SegDisplayBits::SET2_BL
+                    | SegDisplayBits::SET2_B
+                    | SegDisplayBits::SET2_BR
+                    | SegDisplayBits::SET2_TL
+            }
+            0xC => {
+                SegDisplayBits::SET2_T
+                    | SegDisplayBits::SET2_TL
+                    | SegDisplayBits::SET2_BL
+                    | SegDisplayBits::SET2_B
+            }
+            0xD => {
+                SegDisplayBits::SET2_M
+                    | SegDisplayBits::SET2_TR
+                    | SegDisplayBits::SET2_BR
+                    | SegDisplayBits::SET2_BL
+                    | SegDisplayBits::SET2_B
+            }
+            0xE => {
+                SegDisplayBits::SET2_T
+                    | SegDisplayBits::SET2_TL
+                    | SegDisplayBits::SET2_M
+                    | SegDisplayBits::SET2_BL
+                    | SegDisplayBits::SET2_B
+            }
+            0xF => {
+                SegDisplayBits::SET2_T
+                    | SegDisplayBits::SET2_TL
+                    | SegDisplayBits::SET2_M
+                    | SegDisplayBits::SET2_BL
+            }
+            _ => SegDisplayBits::empty(),
+        }
+    }
+
+    pub fn recirc(b: bool) -> SegDisplayBits{
+        if b == true {
+            return SegDisplayBits::RECIRC
+        }
+        SegDisplayBits::FRESH_AIR
+    }
+
+    pub fn mode(input: &ClimateControlMode) -> SegDisplayBits{
+        match input{
+            ClimateControlMode::Face => SegDisplayBits::FACE | SegDisplayBits::BACKGROUND,
+            ClimateControlMode::Feet => SegDisplayBits::FEET | SegDisplayBits::BACKGROUND,
+            ClimateControlMode::FaceFeet => SegDisplayBits::FACE | SegDisplayBits::FEET | SegDisplayBits::BACKGROUND,
+            ClimateControlMode::FeetDef => SegDisplayBits::FEET | SegDisplayBits::DEFROST | SegDisplayBits::BACKGROUND,
+            ClimateControlMode::Def => SegDisplayBits::DEFROST | SegDisplayBits::BACKGROUND,
+        }
+    }
+
+    pub fn ac_toggle(b: bool) -> SegDisplayBits{
+        if b == true{
+            return SegDisplayBits::AC
+        }
+        SegDisplayBits::EMPTY
+    }
+
+    pub fn c_or_f (b: bool) -> SegDisplayBits{
+        if b == true{
+            return SegDisplayBits::CELCIUS
+        }
+        SegDisplayBits::FARENHEIT
+    }
+
+    pub fn heat_watercock(b: bool) -> SegDisplayBits{
+        if b == true{
+            return SegDisplayBits::HEAT
+        }
+        SegDisplayBits::EMPTY
+    }
+
+
+}
+
+#[embassy_executor::task]
+// Syncronizer between Seg side and Serial side for Statically controlled LCD
+pub async fn serialsyncer() -> ! {
+    let inputpin = unsafe { PIN_9::steal() };
+    let outputpin = unsafe { PIN_10::steal() };
+    let mut input = Input::new(inputpin, Pull::None);
+    let mut output = Output::new(outputpin, Level::Low);
+    loop {
+        input.wait_for_rising_edge().await;
+        output.set_high();
+        Timer::after(Duration::from_micros(3)).await;
+        output.set_low();
+        Timer::after(Duration::from_millis(12)).await;
     }
 }
