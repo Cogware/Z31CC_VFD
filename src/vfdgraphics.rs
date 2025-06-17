@@ -1,3 +1,4 @@
+use crate::climatecontrol::ClimateControlMode;
 use alloc::format;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::mono_font::ascii::{FONT_7X13, FONT_8X13_BOLD};
@@ -17,14 +18,6 @@ const CC_DEFSYM: &'static [u8] = include_bytes!("../assets/DefSymbol.bmp");
 
 pub trait BinaryTarget: DrawTarget<Color = BinaryColor> {}
 impl<T> BinaryTarget for T where T: DrawTarget<Color = BinaryColor> {}
-
-pub enum ClimateControlMode {
-    Face,
-    Feet,
-    FaceFeet,
-    FeetDef,
-    Def,
-}
 
 pub struct Image {
     data: Bmp<'static, BinaryColor>,
@@ -82,7 +75,7 @@ impl Graphics {
             data: Bmp::from_slice(CC_DEF).unwrap(),
             offset: Point::new(135, 2),
         };
-        let cc_defsym = Image{
+        let cc_defsym = Image {
             data: Bmp::from_slice(CC_DEFSYM).unwrap(),
             offset: Point::new(130, 2),
         };
@@ -149,7 +142,6 @@ impl Graphics {
     }
 
     pub fn draw_internal_temp<D: BinaryTarget>(&self, temp: i8, display: &mut D) {
-        // TODO: is this what you want? you offset the ambient temp so I did it here too
         let point = {
             if temp < 0 {
                 Point::new(35, 12)

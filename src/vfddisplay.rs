@@ -16,7 +16,8 @@ use embedded_graphics::{
 };
 use embedded_graphics_transform::Transpose;
 
-use crate::{graphics::{ClimateControlMode, Graphics}, map_i32};
+use crate::climatecontrol::ClimateControlBacker;
+use crate::{map_i32, vfdgraphics::Graphics};
 
 pub type InternalFrameBuffer = Framebuffer<
     BinaryColor,
@@ -35,19 +36,16 @@ pub type VFD<'a> = VFD256x50<
 
 pub struct Display<'a> {
     vfd: VFD<'a>,
-    ac_toggle: bool,
-    recirc_toggle: bool,
     framebuffer: Transpose<InternalFrameBuffer>,
     graphics: Graphics,
-    mode: ClimateControlMode,
-    internal_temp: i8,
-    ambient_temp: i8,
     temp_gauge: u8,
     fan_gauge: u8,
+    backend: &'a ClimateControlBacker,
 }
 
 impl<'a> Display<'a> {
     pub fn new(
+        backend: &'a ClimateControlBacker,
         spi_bus: SpiDeviceWithConfig<
             'a,
             CriticalSectionRawMutex,
@@ -63,23 +61,16 @@ impl<'a> Display<'a> {
         let framebuffer = Transpose::new(fb);
         let graphics = Graphics::load();
 
-        let mode = ClimateControlMode::FeetDef;
-        let internal_temp: i8 = 60;
-        let ambient_temp: i8 = -60;
         let temp_gauge: u8 = 0;
         let fan_gauge: u8 = 0;
 
         let d = Display {
             vfd,
-            ac_toggle: false,
-            recirc_toggle: false,
             framebuffer,
             graphics,
-            mode,
-            internal_temp,
-            ambient_temp,
             temp_gauge,
             fan_gauge,
+            backend,
         };
         d
     }
@@ -108,18 +99,18 @@ impl<'a> Display<'a> {
 
     fn draw_mode(&mut self) {
         self.graphics
-            .draw_climate_control_mode(&self.mode, &mut self.framebuffer);
+            .draw_climate_control_mode(self.backend.mode(), &mut self.framebuffer);
         self.graphics
-            .draw_ac_toggle(self.ac_toggle, &mut self.framebuffer);
+            .draw_ac_toggle(self.backend.ac_toggle(), &mut self.framebuffer);
         self.graphics
-            .draw_recirc_toggle(self.recirc_toggle, &mut self.framebuffer);
+            .draw_recirc_toggle(self.backend.recirc_toggle(), &mut self.framebuffer);
     }
 
     fn draw_temps(&mut self) {
         self.graphics
-            .draw_internal_temp(self.internal_temp, &mut self.framebuffer);
+            .draw_internal_temp(self.backend.set_temp(), &mut self.framebuffer);
         self.graphics
-            .draw_ambient_temp(self.ambient_temp, &mut self.framebuffer);
+            .draw_ambient_temp(self.backend.ambient_temp(), &mut self.framebuffer);
     }
 
     fn draw_fan_gauge(&mut self) {
@@ -148,70 +139,5 @@ impl<'a> Display<'a> {
         self.draw_temp_gauge();
         self.draw_temps();
         self.vfd.update_frame(self.framebuffer.data()).unwrap();
-    }
-
-    pub fn test_display(&mut self) {
-        for i in 0..=36 {
-            self.temp_gauge = i;
-            self.update_display();
-        }
-
-        self.ac_toggle = true;
-        self.mode = ClimateControlMode::Face;
-        self.update_display();
-
-        for i in 0..=36 {
-            let range = map_i32(i, 0, 36, 36, 0);
-            self.temp_gauge = range as _;
-            self.update_display();
-        }
-
-        self.ac_toggle = false;
-        self.mode = ClimateControlMode::Feet;
-        self.update_display();
-
-        for i in 60..=99 {
-            self.internal_temp = i;
-            self.update_display();
-        }
-
-        self.recirc_toggle = true;
-        self.mode = ClimateControlMode::FaceFeet;
-        self.update_display();
-
-        for i in 60..=99 {
-            let range = map_i32(i, 60, 99, 99, 60);
-            self.internal_temp = range as _;
-            self.update_display();
-        }
-
-        self.recirc_toggle = false;
-        self.mode = ClimateControlMode::FeetDef;
-        self.update_display();
-
-        for i in -60..=99 {
-            self.ambient_temp = i;
-            self.update_display();
-        }
-
-        self.mode = ClimateControlMode::Def;
-        self.update_display();
-
-        for i in -60..=99 {
-            let range = map_i32(i, -60, 99, 99, -60);
-            self.ambient_temp = range as _;
-            self.update_display();
-        }
-
-        for i in 0..=32 {
-            self.fan_gauge = i;
-            self.update_display();
-        }
-
-        for i in 32..=0 {
-            let range = map_i32(i, 0, 32, 32, 0);
-            self.fan_gauge = range as _;
-            self.update_display();
-        }
     }
 }
