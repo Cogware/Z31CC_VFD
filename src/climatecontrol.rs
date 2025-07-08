@@ -25,8 +25,8 @@ impl ClimateControlBacker {
         let mut ac_toggle = false;
         let mut recirc_toggle = false;
         let mut fan_speed = 0;
-        let mut ambient_temp: i8 = 0;
-        let mut set_temp: i8 = 0;
+        let mut ambient_temp: i8 = 50;
+        let mut set_temp: i8 = 50;
         let mut displaymode: bool = false;
         let cc = ClimateControlBacker {
             mode,
@@ -35,7 +35,7 @@ impl ClimateControlBacker {
             fan_speed,
             ambient_temp,
             set_temp,
-            displaymode
+            displaymode,
         };
         cc
     }
@@ -60,6 +60,14 @@ impl ClimateControlBacker {
         self.recirc_toggle
     }
 
+    pub fn set_recirc_toggle(&mut self, recirc_toggle: bool) {
+        self.recirc_toggle = recirc_toggle;
+    }
+
+    pub fn fan_speed(&mut self) -> u8 {
+        self.fan_speed
+    }
+
     pub fn set_fan_speed(&mut self, fan_speed: u8) {
         self.fan_speed = fan_speed;
     }
@@ -79,11 +87,11 @@ impl ClimateControlBacker {
     pub fn set_set_temp(&mut self, set_temp: i8) {
         self.set_temp = set_temp;
     }
-    
+
     pub fn displaymode(&self) -> bool {
         self.displaymode
     }
-    
+
     pub fn set_displaymode(&mut self, displaymode: bool) {
         self.displaymode = displaymode;
     }

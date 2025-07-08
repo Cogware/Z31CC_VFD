@@ -1,6 +1,10 @@
 use bitflags::bitflags;
-use embassy_rp::{gpio::{Input, Level, Output, Pull}, i2c::{Blocking, I2c}, peripherals::{I2C1, PIN_10, PIN_9}};
-use embassy_time::{block_for, Duration, Timer};
+use embassy_rp::{
+    gpio::{Flex, Input, Level, Output, Pull},
+    i2c::{Blocking, I2c},
+    peripherals::{I2C1, PIN_9, PIN_10, PIN_11},
+};
+use embassy_time::{Duration, Timer, block_for};
 
 use crate::climatecontrol::{ClimateControlBacker, ClimateControlMode};
 
@@ -440,7 +444,7 @@ impl SerialDisplayBits {
         }
     }
 
-    pub fn set_neg(b: bool) -> SerialDisplayBits{
+    pub fn set_neg(b: bool) -> SerialDisplayBits {
         if b == true {
             return SerialDisplayBits::SET_NEG;
         }
@@ -491,7 +495,7 @@ impl SerialDisplayBits {
         return base;
     }
 
-    pub fn setup_set(input: i8) -> (SerialDisplayBits, i8){
+    pub fn setup_set(input: i8) -> (SerialDisplayBits, i8) {
         let mut base = SerialDisplayBits::EMPTY;
         let mut n = input;
         if n < 0 {
@@ -504,21 +508,18 @@ impl SerialDisplayBits {
         }
         let tens = n / 10;
         let ones = n % 10;
-        base = base
-            | SerialDisplayBits::amb_first(tens.try_into().unwrap());
+        base = base | SerialDisplayBits::amb_first(tens.try_into().unwrap());
         return (base, ones);
     }
-
 }
 
 #[allow(unused)]
 impl SegDisplayBits {
-
-    pub fn get_bitsout(input: SegDisplayBits) -> u32{
+    pub fn get_bitsout(input: SegDisplayBits) -> u32 {
         input.bits()
     }
 
-    pub fn set_second(n: i8) -> SegDisplayBits{
+    pub fn set_second(n: i8) -> SegDisplayBits {
         match n {
             0 => {
                 SegDisplayBits::SET2_T
@@ -564,9 +565,7 @@ impl SegDisplayBits {
                     | SegDisplayBits::SET2_B
                     | SegDisplayBits::SET2_BL
             }
-            7 => {
-                SegDisplayBits::SET2_T | SegDisplayBits::SET2_TR | SegDisplayBits::SET2_BR
-            }
+            7 => SegDisplayBits::SET2_T | SegDisplayBits::SET2_TR | SegDisplayBits::SET2_BR,
             8 => {
                 SegDisplayBits::SET2_T
                     | SegDisplayBits::SET2_TR
@@ -629,66 +628,160 @@ impl SegDisplayBits {
         }
     }
 
-    pub fn recirc(b: bool) -> SegDisplayBits{
+    pub fn recirc(b: bool) -> SegDisplayBits {
         if b == true {
-            return SegDisplayBits::RECIRC
+            return SegDisplayBits::RECIRC;
         }
         SegDisplayBits::FRESH_AIR
     }
 
-    pub fn mode(input: &ClimateControlMode) -> SegDisplayBits{
-        match input{
-            ClimateControlMode::Face => SegDisplayBits::FACE | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN,
-            ClimateControlMode::Feet => SegDisplayBits::FEET | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN,
-            ClimateControlMode::FaceFeet => SegDisplayBits::FACE | SegDisplayBits::FEET | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN,
-            ClimateControlMode::FeetDef => SegDisplayBits::FEET | SegDisplayBits::DEFROST | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN,
-            ClimateControlMode::Def => SegDisplayBits::DEFROST | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN,
+    pub fn mode(input: &ClimateControlMode) -> SegDisplayBits {
+        match input {
+            ClimateControlMode::Face => {
+                SegDisplayBits::FACE | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN
+            }
+            ClimateControlMode::Feet => {
+                SegDisplayBits::FEET | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN
+            }
+            ClimateControlMode::FaceFeet => {
+                SegDisplayBits::FACE
+                    | SegDisplayBits::FEET
+                    | SegDisplayBits::BACKGROUND
+                    | SegDisplayBits::FAN
+            }
+            ClimateControlMode::FeetDef => {
+                SegDisplayBits::FEET
+                    | SegDisplayBits::DEFROST
+                    | SegDisplayBits::BACKGROUND
+                    | SegDisplayBits::FAN
+            }
+            ClimateControlMode::Def => {
+                SegDisplayBits::DEFROST | SegDisplayBits::BACKGROUND | SegDisplayBits::FAN
+            }
         }
     }
 
-    pub fn ac_toggle(b: bool) -> SegDisplayBits{
-        if b == true{
-            return SegDisplayBits::AC
+    pub fn ac_toggle(b: bool) -> SegDisplayBits {
+        if b == true {
+            return SegDisplayBits::AC;
         }
         SegDisplayBits::EMPTY
     }
 
-    pub fn c_or_f (b: bool) -> SegDisplayBits{
-        if b == true{
-            return SegDisplayBits::CELCIUS
+    pub fn c_or_f(b: bool) -> SegDisplayBits {
+        if b == true {
+            return SegDisplayBits::CELCIUS;
         }
         SegDisplayBits::FARENHEIT
     }
 
-    pub fn heat_watercock(b: bool) -> SegDisplayBits{
-        if b == true{
-            return SegDisplayBits::HEAT
+    pub fn heat_watercock(b: bool) -> SegDisplayBits {
+        if b == true {
+            return SegDisplayBits::HEAT;
         }
         SegDisplayBits::EMPTY
     }
-
-
 }
 
-pub struct DigiDisplay<'a>{
+/*struct ButtonPinPairs {
+    auto: [u8; 2],
+    demist: [u8; 2],
+    tempup: [u8; 2],
+    off: [u8; 2],
+    fanlo: [u8; 2],
+    fanhigh: [u8; 2],
+    recirc: [u8; 2],
+    tempdown: [u8; 2],
+}*/
+
+pub struct DigiDisplay<'a> {
     i2c: I2c<'a, I2C1, Blocking>,
     serialclock: Output<'a>,
     serialdata: Output<'a>,
     chipaddr: u8,
-
+    pin1: Flex<'a>,
+    pin2: Flex<'a>,
+    pin3: Flex<'a>,
+    pin4: Flex<'a>,
+    pin5: Flex<'a>,
+    pin6: Flex<'a>,
+    demist_led: Output<'a>,
+    ac_led: Output<'a>,
+    econ_led: Output<'a>,
+    defrost_led: Output<'a>,
+    fanhigh_led: Output<'a>,
+    fanlow_led: Output<'a>,
+    recirc_led: Output<'a>,
+    pinpairs: [[Flex<'a>; 2]; 8],
 }
 
-impl<'a> DigiDisplay<'a>{
-    pub fn new(mut i2c: I2c<'a, I2C1, Blocking>, serialclock: Output<'a>, serialdata: Output<'a>) -> Self{
+impl<'a> DigiDisplay<'a> {
+    pub fn new(
+        mut i2c: I2c<'a, I2C1, Blocking>,
+        serialclock: Output<'a>,
+        serialdata: Output<'a>,
+        pin1: Flex<'a>,
+        pin2: Flex<'a>,
+        pin3: Flex<'a>,
+        pin4: Flex<'a>,
+        pin5: Flex<'a>,
+        pin6: Flex<'a>,
+        demist_led: Output<'a>,
+        ac_led: Output<'a>,
+        econ_led: Output<'a>,
+        defrost_led: Output<'a>,
+        fanhigh_led: Output<'a>,
+        fanlow_led: Output<'a>,
+        recirc_led: Output<'a>,
+    ) -> Self {
         let chipaddr = 0x38;
-        block_for(Duration::from_millis(2));
+        block_for(Duration::from_millis(10));
         i2c.blocking_write(chipaddr, &[0x49]).unwrap();
+        let pinpairs: [[Flex<'a>; 2]; 8] = [
+            [pin1, pin4], //auto
+            [pin1, pin2], //demist
+            [pin4, pin5], //tempup
+            [pin3, pin4], //off
+            [pin6, pin2], //fanlo
+            [pin6, pin4], //fanhigh
+            [pin2, pin3], //recirc
+            [pin2, pin5], //tempdown
+        ];
 
-        DigiDisplay { i2c, serialclock, serialdata, chipaddr }
-
+        DigiDisplay {
+            i2c,
+            serialclock,
+            serialdata,
+            chipaddr,
+            pin1,
+            pin2,
+            pin3,
+            pin4,
+            pin5,
+            pin6,
+            demist_led,
+            ac_led,
+            econ_led,
+            defrost_led,
+            fanhigh_led,
+            fanlow_led,
+            recirc_led,
+            pinpairs,
+        }
     }
 
-    async fn write_serial(&mut self, input: u128){
+    async fn buttonreader(&mut self) {
+        for [mut setpin, checkpin] in self.pinpairs {
+            setpin.set_as_output();
+            setpin.set_low();
+            Timer::after(Duration::from_millis(1)).await;
+            if !checkpin.is_high() {}
+            setpin.set_as_input();
+            setpin.set_pull(Pull::Up);
+        }
+    }
+
+    async fn write_serial(&mut self, input: u128) {
         for i in (0..128).rev() {
             self.serialclock.set_low();
             Timer::after(Duration::from_micros(8)).await;
@@ -699,24 +792,29 @@ impl<'a> DigiDisplay<'a>{
         }
     }
 
-    fn write_ic(&mut self, input: u32){
+    fn write_ic(&mut self, input: u32) {
         let dispvalue = input.to_le_bytes();
-        self.i2c.blocking_write(self.chipaddr, &[0x00, dispvalue[0], dispvalue[1], dispvalue[2]])
+        self.i2c
+            .blocking_write(
+                self.chipaddr,
+                &[0x00, dispvalue[0], dispvalue[1], dispvalue[2]],
+            )
             .unwrap();
     }
 
-    pub async fn update_display(&mut self, settings: &ClimateControlBacker){
+    pub async fn update_display(&mut self, settings: &ClimateControlBacker) {
         let mut serialdata = SerialDisplayBits::setup_amb(settings.ambient_temp()); //TODO add guage from temp set
-        let mut segdata = SegDisplayBits::mode(settings.mode()) | SegDisplayBits::recirc(settings.recirc_toggle()) | SegDisplayBits::ac_toggle(settings.ac_toggle()) | SegDisplayBits::c_or_f(settings.displaymode());
+        let mut segdata = SegDisplayBits::mode(settings.mode())
+            | SegDisplayBits::recirc(settings.recirc_toggle())
+            | SegDisplayBits::ac_toggle(settings.ac_toggle())
+            | SegDisplayBits::c_or_f(settings.displaymode());
         let (serialset, segset) = SerialDisplayBits::setup_set(settings.set_temp());
-        serialdata = serialdata | serialset;
+        serialdata = serialdata | serialset | SerialDisplayBits::gauge(5);
         segdata = segdata | SegDisplayBits::set_second(segset);
 
         self.write_serial(serialdata.bits().into()).await;
         self.write_ic(segdata.bits());
     }
-
-
 }
 
 #[embassy_executor::task]
@@ -732,5 +830,17 @@ pub async fn serialsyncer() -> ! {
         Timer::after(Duration::from_micros(3)).await;
         output.set_low();
         Timer::after(Duration::from_millis(12)).await;
+    }
+}
+#[embassy_executor::task]
+// Syncronizer between Seg side and Serial side for Statically controlled LCD
+pub async fn serialclockout() -> ! {
+    let outpin = unsafe { PIN_11::steal() };
+    let mut output = Output::new(outpin, Level::Low);
+    loop {
+        output.set_high();
+        block_for(Duration::from_micros(60));
+        output.set_low();
+        block_for(Duration::from_micros(60));
     }
 }
