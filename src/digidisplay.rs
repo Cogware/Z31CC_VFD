@@ -683,40 +683,7 @@ impl SegDisplayBits {
     }
 }
 
-pub struct Buttons<'a> {
-    pin1: Flex<'a>,
-    pin2: Flex<'a>,
-    pin3: Flex<'a>,
-    pin4: Flex<'a>,
-    pin5: Flex<'a>,
-    pin6: Flex<'a>,
-}
-
-impl<'a> Buttons<'a>{
-    pub fn new(
-    pin1: Flex<'a>,    
-    pin2: Flex<'a>,
-    pin3: Flex<'a>,
-    pin4: Flex<'a>,
-    pin5: Flex<'a>,
-    pin6: Flex<'a>) -> Self{
-        Buttons { pin1, pin2, pin3, pin4, pin5, pin6}
-    }
-
-    fn get(&'a mut self, button: Button) -> (&'a mut Flex<'a>, &'a Flex<'a>){
-        match button{
-            Button::Auto => (&mut self.pin1, &self.pin4),
-            Button::Demist => (&mut self.pin1, &self.pin2),
-            Button::TempUp => (&mut self.pin4, &self.pin5),
-            Button::Off => (&mut self.pin3, &self.pin4),
-            Button::FanLo => (&mut self.pin6, &self.pin2),
-            Button::FanHigh => (&mut self.pin6, &self.pin4),
-            Button::Recirc => (&mut self.pin2, &self.pin3),
-            Button::TempDown => (&mut self.pin2, &self.pin5),
-        }
-    }
-}
-#[derive(Clone, Copy)]
+#[derive(Copy, Clone)]
 pub enum Button {
     Auto,
     Demist,
@@ -728,35 +695,72 @@ pub enum Button {
     TempDown,
 }
 
-pub struct ButtonIter<'a>{
-    buttons: &'a mut Buttons<'a>,
-    next: Option<Button>
+pub struct Buttons<'a> {
+    pin1: Flex<'a>,
+    pin2: Flex<'a>,
+    pin3: Flex<'a>,
+    pin4: Flex<'a>,
+    pin5: Flex<'a>,
+    pin6: Flex<'a>,
 }
 
-impl<'a> ButtonIter<'a>{
-    fn new(buttons: &'a mut Buttons<'a>) -> Self{
-        ButtonIter { buttons, next: Some(Button::Auto) }
+impl<'a> Buttons<'a> {
+    pub fn new(
+        pin1: Flex<'a>,
+        pin2: Flex<'a>,
+        pin3: Flex<'a>,
+        pin4: Flex<'a>,
+        pin5: Flex<'a>,
+        pin6: Flex<'a>,
+    ) -> Self {
+        Buttons { pin1, pin2, pin3, pin4, pin5, pin6 }
     }
-}
 
-impl<'a> Iterator for ButtonIter<'a>{
-    type Item = (&'a mut Flex<'a>, &'a Flex<'a>);
-    fn next(&mut self) -> Option<Self::Item>{
-        let next = self.next?;
-        match next{
-            Button::Auto => self.next = Some(Button::Demist),
-            Button::Demist => self.next = Some(Button::Demist),
-            Button::TempUp => self.next = Some(Button::Demist),
-            Button::Off => self.next = Some(Button::Demist),
-            Button::FanLo => self.next = Some(Button::Demist),
-            Button::FanHigh => self.next = Some(Button::Demist),
-            Button::Recirc => self.next = Some(Button::Demist),
-            Button::TempDown => self.next = None,
+    /// Only borrow &mut self for this call; returns references valid
+    /// for the duration of the borrow, not `’a`.
+    pub fn get(&mut self, button: Button) -> (&mut Flex<'a>, &Flex<'a>) {
+        match button {
+            Button::Auto     => (&mut self.pin1, &self.pin4),
+            Button::Demist   => (&mut self.pin1, &self.pin2),
+            Button::TempUp   => (&mut self.pin4, &self.pin5),
+            Button::Off      => (&mut self.pin3, &self.pin4),
+            Button::FanLo    => (&mut self.pin6, &self.pin2),
+            Button::FanHigh  => (&mut self.pin6, &self.pin4),
+            Button::Recirc   => (&mut self.pin2, &self.pin3),
+            Button::TempDown => (&mut self.pin2, &self.pin5),
         }
-        Some(self.buttons.get(next))
     }
-    
 }
+
+pub struct ButtonIter {
+    next: Option<Button>,
+}
+
+impl ButtonIter {
+    pub fn new() -> Self {
+        ButtonIter { next: Some(Button::Auto) }
+    }
+}
+
+impl Iterator for ButtonIter {
+    type Item = Button;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let curr = self.next.take()?;
+        self.next = match curr {
+            Button::Auto     => Some(Button::Demist),
+            Button::Demist   => Some(Button::TempUp),
+            Button::TempUp   => Some(Button::Off),
+            Button::Off      => Some(Button::FanLo),
+            Button::FanLo    => Some(Button::FanHigh),
+            Button::FanHigh  => Some(Button::Recirc),
+            Button::Recirc   => Some(Button::TempDown),
+            Button::TempDown => None,
+        };
+        Some(curr)
+    }
+}
+
 pub struct DigiDisplay<'a> {
     i2c: I2c<'a, I2C1, Blocking>,
     serialclock: Output<'a>,
@@ -769,7 +773,8 @@ pub struct DigiDisplay<'a> {
     fanhigh_led: Output<'a>,
     fanlow_led: Output<'a>,
     recirc_led: Output<'a>,
-    //pinpairs: [[&'a Flex<'a>; 2]; 8],
+    buttons: Buttons<'a>,
+    backend: ClimateControlBacker,
 }
 
 impl<'a> DigiDisplay<'a> {
@@ -784,20 +789,19 @@ impl<'a> DigiDisplay<'a> {
         fanhigh_led: Output<'a>,
         fanlow_led: Output<'a>,
         recirc_led: Output<'a>,
+        pin1: Flex<'a>,
+        pin2: Flex<'a>,
+        pin3: Flex<'a>,
+        pin4: Flex<'a>,
+        pin5: Flex<'a>,
+        pin6: Flex<'a>,
+        backend: ClimateControlBacker
     ) -> Self {
         let chipaddr = 0x38;
-        block_for(Duration::from_millis(10));
+        embassy_time::block_for(Duration::from_millis(10));
         i2c.blocking_write(chipaddr, &[0x49]).unwrap();
-        /*let pinpairs: [[&Flex<'a>; 2]; 8] = [
-            [&pin1, &pin4], //auto
-            [&pin1, &pin2], //demist
-            [&pin4, &pin5], //tempup
-            [&pin3, &pin4], //off
-            [&pin6, &pin2], //fanlo
-            [&pin6, &pin4], //fanhigh
-            [&pin2, &pin3], //recirc
-            [&pin2, &pin5], //tempdown
-        ];*/
+
+        let buttons = Buttons::new(pin1, pin2, pin3, pin4, pin5, pin6);
 
         DigiDisplay {
             i2c,
@@ -811,20 +815,91 @@ impl<'a> DigiDisplay<'a> {
             fanhigh_led,
             fanlow_led,
             recirc_led,
-            //pinpairs,
+            buttons,
+            backend,
         }
     }
 
-    /*async fn buttonreader(&mut self) {
-        for [mut setpin, checkpin] in self.pinpairs {
-            setpin.set_as_output();
-            setpin.set_low();
+    pub async fn buttonreader(&mut self) {
+        let mut iter = ButtonIter::new();
+
+        while let Some(button) = iter.next() {
+            {
+                let (setpin, _) = self.buttons.get(button);
+                setpin.set_as_output();
+                setpin.set_low();
+            }
             Timer::after(Duration::from_millis(1)).await;
-            if !checkpin.is_high() {}
-            setpin.set_as_input();
-            setpin.set_pull(Pull::Up);
+
+            let pressed = {
+                let (_, checkpin) = self.buttons.get(button);
+                !checkpin.is_high()
+            };
+
+            if pressed {
+                // short debounce delay
+                Timer::after(Duration::from_millis(10)).await;
+
+                // second sample
+                let still_pressed = {
+                    let (_, checkpin) = self.buttons.get(button);
+                    !checkpin.is_high()
+                };
+
+                if still_pressed {
+                    Timer::after(Duration::from_millis(500)).await;
+
+                    let is_held = {
+                        let (_, checkpin) = self.buttons.get(button);
+                        !checkpin.is_high()
+                    };
+
+                    if is_held {
+                        loop {
+                            Timer::after(Duration::from_millis(100)).await;
+                    
+                            let still_pressed = {
+                                let (_, checkpin) = self.buttons.get(button);
+                                !checkpin.is_high()
+                            };  
+                            if !still_pressed {
+                                break;
+                            }
+                            match button{
+                                Button::Auto => self.backend.set_ac_toggle(),
+                                Button::Demist => self.backend.next_mode(),
+                                Button::TempUp => self.backend.set_set_temp(self.backend.set_temp() + 1),
+                                Button::Off => self.backend.set_fan_speed(0),
+                                Button::FanLo => self.backend.set_fan_speed(50),
+                                Button::FanHigh => self.backend.set_fan_speed(100),
+                                Button::Recirc => self.backend.set_recirc_toggle(),
+                                Button::TempDown => self.backend.set_set_temp(self.backend.set_temp() - 1),
+                            }
+                        }
+                    } else {
+                        match button{
+                            Button::Auto => self.backend.set_ac_toggle(),
+                            Button::Demist => self.backend.next_mode(),
+                            Button::TempUp => self.backend.set_set_temp(self.backend.set_temp() + 1),
+                            Button::Off => self.backend.set_fan_speed(0),
+                            Button::FanLo => self.backend.set_fan_speed(50),
+                            Button::FanHigh => self.backend.set_fan_speed(100),
+                            Button::Recirc => self.backend.set_recirc_toggle(),
+                            Button::TempDown => self.backend.set_set_temp(self.backend.set_temp() - 1),
+                        }
+                    }
+                }
+            }
+
+            // 4) restore pin to input + pull-up
+            {
+                let (setpin, _) = self.buttons.get(button);
+                setpin.set_as_input();
+                setpin.set_pull(Pull::Up);
+            }
         }
-    }*/
+    }
+
 
     async fn write_serial(&mut self, input: u128) {
         for i in (0..128).rev() {

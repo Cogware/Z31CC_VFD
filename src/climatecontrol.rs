@@ -44,6 +44,16 @@ impl ClimateControlBacker {
         &self.mode
     }
 
+    pub fn next_mode(&mut self) {
+        match self.mode{
+            ClimateControlMode::Face => self.set_mode(ClimateControlMode::Feet),
+            ClimateControlMode::Feet => self.set_mode(ClimateControlMode::FaceFeet),
+            ClimateControlMode::FaceFeet => self.set_mode(ClimateControlMode::FeetDef),
+            ClimateControlMode::FeetDef => self.set_mode(ClimateControlMode::Def),
+            ClimateControlMode::Def => self.set_mode(ClimateControlMode::Face),
+        }
+    }
+
     pub fn set_mode(&mut self, mode: ClimateControlMode) {
         self.mode = mode;
     }
@@ -52,16 +62,16 @@ impl ClimateControlBacker {
         self.ac_toggle
     }
 
-    pub fn set_ac_toggle(&mut self, ac_toggle: bool) {
-        self.ac_toggle = ac_toggle;
+    pub fn set_ac_toggle(&mut self) {
+        self.ac_toggle = !self.ac_toggle;
     }
 
     pub fn recirc_toggle(&self) -> bool {
         self.recirc_toggle
     }
 
-    pub fn set_recirc_toggle(&mut self, recirc_toggle: bool) {
-        self.recirc_toggle = recirc_toggle;
+    pub fn set_recirc_toggle(&mut self) {
+        self.recirc_toggle = !self.recirc_toggle;
     }
 
     pub fn fan_speed(&mut self) -> u8 {
@@ -85,7 +95,12 @@ impl ClimateControlBacker {
     }
 
     pub fn set_set_temp(&mut self, set_temp: i8) {
-        self.set_temp = set_temp;
+        if set_temp >= 90{
+            self.set_temp = 90
+        }else if set_temp <= 60 {
+            self.set_temp = 60
+        }else{
+        self.set_temp = set_temp;}
     }
 
     pub fn displaymode(&self) -> bool {
