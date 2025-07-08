@@ -2,7 +2,7 @@ use bitflags::bitflags;
 use embassy_rp::{
     gpio::{Flex, Input, Level, Output, Pull},
     i2c::{Blocking, I2c},
-    peripherals::{I2C1, PIN_9, PIN_10, PIN_11},
+    peripherals::{I2C1, PIN_10, PIN_11, PIN_27, PIN_28, PIN_9},
 };
 use embassy_time::{Duration, Timer, block_for};
 
@@ -762,7 +762,7 @@ impl Iterator for ButtonIter {
 }
 
 pub struct DigiDisplay<'a> {
-    i2c: I2c<'a, I2C1, Blocking>,
+    //i2c: I2c<'a, I2C1, Blocking>,
     serialclock: Output<'a>,
     serialdata: Output<'a>,
     chipaddr: u8,
@@ -779,7 +779,7 @@ pub struct DigiDisplay<'a> {
 
 impl<'a> DigiDisplay<'a> {
     pub fn new(
-        mut i2c: I2c<'a, I2C1, Blocking>,
+        //mut i2c: I2c<'a, I2C1, Blocking>,
         serialclock: Output<'a>,
         serialdata: Output<'a>,
         demist_led: Output<'a>,
@@ -799,12 +799,12 @@ impl<'a> DigiDisplay<'a> {
     ) -> Self {
         let chipaddr = 0x38;
         embassy_time::block_for(Duration::from_millis(10));
-        i2c.blocking_write(chipaddr, &[0x49]).unwrap();
+        //i2c.blocking_write(chipaddr, &[0x49]).unwrap();
 
         let buttons = Buttons::new(pin1, pin2, pin3, pin4, pin5, pin6);
 
         DigiDisplay {
-            i2c,
+            //i2c,
             serialclock,
             serialdata,
             chipaddr,
@@ -900,6 +900,39 @@ impl<'a> DigiDisplay<'a> {
         }
     }
 
+    fn led_writer(&mut self){
+        match self.backend.mode(){
+            ClimateControlMode::Face => {self.defrost_led.set_high(); self.demist_led.set_low();},
+            ClimateControlMode::Feet => {self.defrost_led.set_high(); self.demist_led.set_high();},
+            ClimateControlMode::FaceFeet => {self.defrost_led.set_high(); self.demist_led.set_high();},
+            ClimateControlMode::FeetDef => {self.defrost_led.set_high(); self.demist_led.set_high();},
+            ClimateControlMode::Def => {self.defrost_led.set_low(); self.demist_led.set_high();},
+        }
+
+        if self.backend.ac_toggle() == true{
+            self.ac_led.set_low();
+            self.econ_led.set_high();
+        }else if self.backend.ac_toggle() == false{
+            self.ac_led.set_high();
+            self.econ_led.set_low();
+        }
+
+        if self.backend.recirc_toggle() == true{
+            self.recirc_led.set_low();
+        }else if self.backend.recirc_toggle() == false{
+            self.recirc_led.set_high();
+        }
+
+        match self.backend.fan_speed(){
+            0 => {self.fanhigh_led.set_high(); self.fanlow_led.set_high();}
+            50 => {self.fanhigh_led.set_high(); self.fanlow_led.set_low();}
+            100 => {self.fanhigh_led.set_low(); self.fanlow_led.set_high();}
+            _ => ()
+        }
+
+
+    }
+
 
     async fn write_serial(&mut self, input: u128) {
         for i in (0..128).rev() {
@@ -914,34 +947,36 @@ impl<'a> DigiDisplay<'a> {
 
     fn write_ic(&mut self, input: u32) {
         let dispvalue = input.to_le_bytes();
-        self.i2c
+        /*self.i2c
             .blocking_write(
                 self.chipaddr,
                 &[0x00, dispvalue[0], dispvalue[1], dispvalue[2]],
             )
-            .unwrap();
+            .unwrap();*/
     }
 
-    pub async fn update_display(&mut self, settings: &ClimateControlBacker) {
-        let mut serialdata = SerialDisplayBits::setup_amb(settings.ambient_temp()); //TODO add guage from temp set
-        let mut segdata = SegDisplayBits::mode(settings.mode())
-            | SegDisplayBits::recirc(settings.recirc_toggle())
-            | SegDisplayBits::ac_toggle(settings.ac_toggle())
-            | SegDisplayBits::c_or_f(settings.displaymode());
-        let (serialset, segset) = SerialDisplayBits::setup_set(settings.set_temp());
+    pub async fn update_display(&mut self) {
+        let mut serialdata = SerialDisplayBits::setup_amb(self.backend.ambient_temp()); //TODO add guage from temp set
+        let mut segdata = SegDisplayBits::mode(self.backend.mode())
+            | SegDisplayBits::recirc(self.backend.recirc_toggle())
+            | SegDisplayBits::ac_toggle(self.backend.ac_toggle())
+            | SegDisplayBits::c_or_f(self.backend.displaymode());
+        let (serialset, segset) = SerialDisplayBits::setup_set(self.backend.set_temp());
         serialdata = serialdata | serialset | SerialDisplayBits::gauge(5);
         segdata = segdata | SegDisplayBits::set_second(segset);
 
         self.write_serial(serialdata.bits().into()).await;
         self.write_ic(segdata.bits());
+        self.led_writer();
+
     }
 }
 
 #[embassy_executor::task]
 // Syncronizer between Seg side and Serial side for Statically controlled LCD
 pub async fn serialsyncer() -> ! {
-    let inputpin = unsafe { PIN_9::steal() };
-    let outputpin = unsafe { PIN_10::steal() };
+    let inputpin = unsafe { PIN_28::steal() };
+    let outputpin = unsafe { PIN_27::steal() };
     let mut input = Input::new(inputpin, Pull::None);
     let mut output = Output::new(outputpin, Level::Low);
     loop {
@@ -950,17 +985,5 @@ pub async fn serialsyncer() -> ! {
         Timer::after(Duration::from_micros(3)).await;
         output.set_low();
         Timer::after(Duration::from_millis(12)).await;
-    }
-}
-#[embassy_executor::task]
-// Syncronizer between Seg side and Serial side for Statically controlled LCD
-pub async fn serialclockout() -> ! {
-    let outpin = unsafe { PIN_11::steal() };
-    let mut output = Output::new(outpin, Level::Low);
-    loop {
-        output.set_high();
-        block_for(Duration::from_micros(60));
-        output.set_low();
-        block_for(Duration::from_micros(60));
     }
 }

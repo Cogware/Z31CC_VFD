@@ -48,41 +48,6 @@ async fn main(spawner: Spawner) {
     let Pio {
         mut common, sm0, ..
     } = Pio::new(p.PIO0, PIOIrqs);
-    //spawner.spawn(serialclockout()).unwrap();
-
-    //let sda = p.PIN_2;
-    //let scl = p.PIN_3;
-    /*let serialclock = Output::new(p.PIN_6, Level::Low);
-    let serialdata = Output::new(p.PIN_5, Level::Low);
-    let i2c = i2c::I2c::new_blocking(p.I2C1, scl, sda, embassy_rp::i2c::Config::default());
-
-    spawner.spawn(digidisplay::serialsyncer()).unwrap();
-
-    let mut digidisp = DigiDisplay::new(i2c, serialclock, serialdata);*/
-
-    const NUM_LEDS: usize = 1;
-    let mut data = [RGB8::default(); NUM_LEDS];
-    let program = PioWs2812Program::new(&mut common);
-    let mut ws2812 = PioWs2812::new(&mut common, sm0, p.DMA_CH1, p.PIN_21, &program);
-
-    /*let adc = Adc::new_blocking(p.ADC, Config::default());
-    let ambtemp = Channel::new_pin(p.PIN_26, Pull::None);
-    let onboardts = Channel::new_temp_sensor(p.ADC_TEMP_SENSOR);
-    let mut therm = Thermistor::new(ambtemp, onboardts, adc);
-    let vals = therm.measure_temp();
-    vfd.ambient_temp = vals[0] as i8;
-    vfd.internal_temp = vals[1] as i8;*/
-
-    /*loop {
-        for j in 0..(256 * 5) {
-            for i in 0..NUM_LEDS {
-                data[i] = wheel((((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255) as u8);
-            }
-            ws2812.write(&data).await;
-            digidisp.update_display(&backend).await;
-            block_for(Duration::from_millis(500));
-        }
-    }*/
 
     let mut backend = ClimateControlBacker::default();
 
@@ -100,33 +65,38 @@ async fn main(spawner: Spawner) {
     let mut fanlo = Output::new(p.PIN_22, Level::High);
     let mut recirc = Output::new(p.PIN_25, Level::High);
 
-    pin1.set_as_input();
-    pin2.set_as_input();
-    pin3.set_as_input();
-    pin4.set_as_input();
-    pin5.set_as_input();
-    pin6.set_as_input();
+    let sda = p.PIN_2;
+    let scl = p.PIN_3;
+    let serialclock = Output::new(p.PIN_24, Level::Low);
+    let serialdata = Output::new(p.PIN_29, Level::Low);
+    //let i2c = i2c::I2c::new_blocking(p.I2C1, scl, sda, embassy_rp::i2c::Config::default());
 
-    pin1.set_pull(Pull::Up);
-    pin2.set_pull(Pull::Up);
-    pin3.set_pull(Pull::Up);
-    pin4.set_pull(Pull::Up);
-    pin5.set_pull(Pull::Up);
-    pin6.set_pull(Pull::Up);
+    spawner.spawn(digidisplay::serialsyncer()).unwrap();
 
-    let mut value: u8;
-    let mut defbool = true;
+    let mut digidisp = DigiDisplay::new( serialclock, serialdata, demist, ac, econ, defrost, fanhigh, fanlo, recirc, pin1, pin2, pin3, pin4, pin5, pin6, backend);
+
+    const NUM_LEDS: usize = 1;
+    let mut data = [RGB8::default(); NUM_LEDS];
+    let program = PioWs2812Program::new(&mut common);
+    let mut ws2812 = PioWs2812::new(&mut common, sm0, p.DMA_CH1, p.PIN_21, &program);
+
+    /*let adc = Adc::new_blocking(p.ADC, Config::default());
+    let ambtemp = Channel::new_pin(p.PIN_26, Pull::None);
+    let onboardts = Channel::new_temp_sensor(p.ADC_TEMP_SENSOR);
+    let mut therm = Thermistor::new(ambtemp, onboardts, adc);
+    let vals = therm.measure_temp();
+    vfd.ambient_temp = vals[0] as i8;
+    vfd.internal_temp = vals[1] as i8;*/
 
     loop {
-        value = 250;
-        // auto: pin1 -> pin4
-
-        for i in 0..NUM_LEDS {
-            data[i] = wheel((((i * 256) as u16 / NUM_LEDS as u16 + value as u16) & 255) as u8);
+        for j in 0..(256 * 5) {
+            for i in 0..NUM_LEDS {
+                data[i] = wheel((((i * 256) as u16 / NUM_LEDS as u16 + j as u16) & 255) as u8);
+            }
+            ws2812.write(&data).await;
+            digidisp.buttonreader().await;
+            digidisp.update_display().await;
         }
-        ws2812.write(&data).await;
-
-        Timer::after(Duration::from_millis(5)).await;
     }
 }
 
