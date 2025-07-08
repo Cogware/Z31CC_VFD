@@ -729,12 +729,12 @@ pub enum Button {
 }
 
 pub struct ButtonIter<'a>{
-    buttons: &'a Buttons<'a>,
+    buttons: &'a mut Buttons<'a>,
     next: Option<Button>
 }
 
 impl<'a> ButtonIter<'a>{
-    fn new(buttons: &'a mut Buttons) -> Self{
+    fn new(buttons: &'a mut Buttons<'a>) -> Self{
         ButtonIter { buttons, next: Some(Button::Auto) }
     }
 }
@@ -751,10 +751,11 @@ impl<'a> Iterator for ButtonIter<'a>{
             Button::FanLo => self.next = Some(Button::Demist),
             Button::FanHigh => self.next = Some(Button::Demist),
             Button::Recirc => self.next = Some(Button::Demist),
-            Button::TempDown => {self.next = None;
-                                Some(self.buttons.get(next))},
+            Button::TempDown => self.next = None,
         }
+        Some(self.buttons.get(next))
     }
+    
 }
 pub struct DigiDisplay<'a> {
     i2c: I2c<'a, I2C1, Blocking>,
