@@ -6,7 +6,10 @@ use embassy_rp::{
 };
 use embassy_time::{Duration, Timer, block_for};
 
-use crate::climatecontrol::{ClimateControlBacker, ClimateControlMode};
+use crate::{
+    climatecontrol::{ClimateControlBacker, ClimateControlMode},
+    map_u8,
+};
 
 bitflags! {
     //      Statically driven side of display(through driver IC over I2C)
@@ -989,13 +992,14 @@ impl<'a> DigiDisplay<'a> {
     }
 
     pub async fn update_display(&mut self) {
-        let mut serialdata = SerialDisplayBits::setup_amb(self.backend.ambient_temp()); //TODO add guage from temp set
+        let mut serialdata = SerialDisplayBits::setup_amb(self.backend.ambient_temp());
         let mut segdata = SegDisplayBits::mode(self.backend.mode())
             | SegDisplayBits::recirc(self.backend.recirc_toggle())
             | SegDisplayBits::ac_toggle(self.backend.ac_toggle())
             | SegDisplayBits::c_or_f(self.backend.displaymode());
         let (serialset, segset) = SerialDisplayBits::setup_set(self.backend.set_temp());
-        serialdata = serialdata | serialset | SerialDisplayBits::gauge(5);
+        let tempguage = map_u8(self.backend.set_temp().try_into().unwrap(), 60, 90, 0, 10);
+        serialdata = serialdata | serialset | SerialDisplayBits::gauge(tempguage);
         segdata = segdata | SegDisplayBits::set_second(segset);
 
         self.write_serial(serialdata.bits().into()).await;
