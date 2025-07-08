@@ -2,7 +2,7 @@ use bitflags::bitflags;
 use embassy_rp::{
     gpio::{Flex, Input, Level, Output, Pull},
     i2c::{Blocking, I2c},
-    peripherals::{I2C1, PIN_10, PIN_11, PIN_27, PIN_28, PIN_9},
+    peripherals::{I2C1, PIN_9, PIN_10, PIN_11, PIN_27, PIN_28},
 };
 use embassy_time::{Duration, Timer, block_for};
 
@@ -713,20 +713,27 @@ impl<'a> Buttons<'a> {
         pin5: Flex<'a>,
         pin6: Flex<'a>,
     ) -> Self {
-        Buttons { pin1, pin2, pin3, pin4, pin5, pin6 }
+        Buttons {
+            pin1,
+            pin2,
+            pin3,
+            pin4,
+            pin5,
+            pin6,
+        }
     }
 
     /// Only borrow &mut self for this call; returns references valid
     /// for the duration of the borrow, not `’a`.
     pub fn get(&mut self, button: Button) -> (&mut Flex<'a>, &Flex<'a>) {
         match button {
-            Button::Auto     => (&mut self.pin1, &self.pin4),
-            Button::Demist   => (&mut self.pin1, &self.pin2),
-            Button::TempUp   => (&mut self.pin4, &self.pin5),
-            Button::Off      => (&mut self.pin3, &self.pin4),
-            Button::FanLo    => (&mut self.pin6, &self.pin2),
-            Button::FanHigh  => (&mut self.pin6, &self.pin4),
-            Button::Recirc   => (&mut self.pin2, &self.pin3),
+            Button::Auto => (&mut self.pin1, &self.pin4),
+            Button::Demist => (&mut self.pin1, &self.pin2),
+            Button::TempUp => (&mut self.pin4, &self.pin5),
+            Button::Off => (&mut self.pin3, &self.pin4),
+            Button::FanLo => (&mut self.pin6, &self.pin2),
+            Button::FanHigh => (&mut self.pin6, &self.pin4),
+            Button::Recirc => (&mut self.pin2, &self.pin3),
             Button::TempDown => (&mut self.pin2, &self.pin5),
         }
     }
@@ -738,7 +745,9 @@ pub struct ButtonIter {
 
 impl ButtonIter {
     pub fn new() -> Self {
-        ButtonIter { next: Some(Button::Auto) }
+        ButtonIter {
+            next: Some(Button::Auto),
+        }
     }
 }
 
@@ -748,13 +757,13 @@ impl Iterator for ButtonIter {
     fn next(&mut self) -> Option<Self::Item> {
         let curr = self.next.take()?;
         self.next = match curr {
-            Button::Auto     => Some(Button::Demist),
-            Button::Demist   => Some(Button::TempUp),
-            Button::TempUp   => Some(Button::Off),
-            Button::Off      => Some(Button::FanLo),
-            Button::FanLo    => Some(Button::FanHigh),
-            Button::FanHigh  => Some(Button::Recirc),
-            Button::Recirc   => Some(Button::TempDown),
+            Button::Auto => Some(Button::Demist),
+            Button::Demist => Some(Button::TempUp),
+            Button::TempUp => Some(Button::Off),
+            Button::Off => Some(Button::FanLo),
+            Button::FanLo => Some(Button::FanHigh),
+            Button::FanHigh => Some(Button::Recirc),
+            Button::Recirc => Some(Button::TempDown),
             Button::TempDown => None,
         };
         Some(curr)
@@ -795,7 +804,7 @@ impl<'a> DigiDisplay<'a> {
         pin4: Flex<'a>,
         pin5: Flex<'a>,
         pin6: Flex<'a>,
-        backend: ClimateControlBacker
+        backend: ClimateControlBacker,
     ) -> Self {
         let chipaddr = 0x38;
         embassy_time::block_for(Duration::from_millis(10));
@@ -845,9 +854,18 @@ impl<'a> DigiDisplay<'a> {
                     let (_, checkpin) = self.buttons.get(button);
                     !checkpin.is_high()
                 };
-
+                match button {
+                    Button::Auto => self.backend.set_ac_toggle(),
+                    Button::Demist => self.backend.next_mode(),
+                    Button::TempUp => self.backend.set_set_temp(self.backend.set_temp() + 1),
+                    Button::Off => self.backend.set_fan_speed(0),
+                    Button::FanLo => self.backend.set_fan_speed(50),
+                    Button::FanHigh => self.backend.set_fan_speed(100),
+                    Button::Recirc => self.backend.set_recirc_toggle(),
+                    Button::TempDown => self.backend.set_set_temp(self.backend.set_temp() - 1),
+                }
                 if still_pressed {
-                    Timer::after(Duration::from_millis(500)).await;
+                    Timer::after(Duration::from_millis(100)).await;
 
                     let is_held = {
                         let (_, checkpin) = self.buttons.get(button);
@@ -857,35 +875,29 @@ impl<'a> DigiDisplay<'a> {
                     if is_held {
                         loop {
                             Timer::after(Duration::from_millis(100)).await;
-                    
+
                             let still_pressed = {
                                 let (_, checkpin) = self.buttons.get(button);
                                 !checkpin.is_high()
-                            };  
+                            };
                             if !still_pressed {
                                 break;
                             }
-                            match button{
+                            match button {
                                 Button::Auto => self.backend.set_ac_toggle(),
                                 Button::Demist => self.backend.next_mode(),
-                                Button::TempUp => self.backend.set_set_temp(self.backend.set_temp() + 1),
+                                Button::TempUp => {
+                                    self.backend.set_set_temp(self.backend.set_temp() + 1)
+                                }
                                 Button::Off => self.backend.set_fan_speed(0),
                                 Button::FanLo => self.backend.set_fan_speed(50),
                                 Button::FanHigh => self.backend.set_fan_speed(100),
                                 Button::Recirc => self.backend.set_recirc_toggle(),
-                                Button::TempDown => self.backend.set_set_temp(self.backend.set_temp() - 1),
+                                Button::TempDown => {
+                                    self.backend.set_set_temp(self.backend.set_temp() - 1)
+                                }
                             }
-                        }
-                    } else {
-                        match button{
-                            Button::Auto => self.backend.set_ac_toggle(),
-                            Button::Demist => self.backend.next_mode(),
-                            Button::TempUp => self.backend.set_set_temp(self.backend.set_temp() + 1),
-                            Button::Off => self.backend.set_fan_speed(0),
-                            Button::FanLo => self.backend.set_fan_speed(50),
-                            Button::FanHigh => self.backend.set_fan_speed(100),
-                            Button::Recirc => self.backend.set_recirc_toggle(),
-                            Button::TempDown => self.backend.set_set_temp(self.backend.set_temp() - 1),
+                            self.update_display().await
                         }
                     }
                 }
@@ -900,39 +912,60 @@ impl<'a> DigiDisplay<'a> {
         }
     }
 
-    fn led_writer(&mut self){
-        match self.backend.mode(){
-            ClimateControlMode::Face => {self.defrost_led.set_high(); self.demist_led.set_low();},
-            ClimateControlMode::Feet => {self.defrost_led.set_high(); self.demist_led.set_high();},
-            ClimateControlMode::FaceFeet => {self.defrost_led.set_high(); self.demist_led.set_high();},
-            ClimateControlMode::FeetDef => {self.defrost_led.set_high(); self.demist_led.set_high();},
-            ClimateControlMode::Def => {self.defrost_led.set_low(); self.demist_led.set_high();},
+    fn led_writer(&mut self) {
+        match self.backend.mode() {
+            ClimateControlMode::Face => {
+                self.defrost_led.set_high();
+                self.demist_led.set_low();
+            }
+            ClimateControlMode::Feet => {
+                self.defrost_led.set_high();
+                self.demist_led.set_high();
+            }
+            ClimateControlMode::FaceFeet => {
+                self.defrost_led.set_high();
+                self.demist_led.set_high();
+            }
+            ClimateControlMode::FeetDef => {
+                self.defrost_led.set_high();
+                self.demist_led.set_high();
+            }
+            ClimateControlMode::Def => {
+                self.defrost_led.set_low();
+                self.demist_led.set_high();
+            }
         }
 
-        if self.backend.ac_toggle() == true{
+        if self.backend.ac_toggle() == true {
             self.ac_led.set_low();
             self.econ_led.set_high();
-        }else if self.backend.ac_toggle() == false{
+        } else if self.backend.ac_toggle() == false {
             self.ac_led.set_high();
             self.econ_led.set_low();
         }
 
-        if self.backend.recirc_toggle() == true{
+        if self.backend.recirc_toggle() == true {
             self.recirc_led.set_low();
-        }else if self.backend.recirc_toggle() == false{
+        } else if self.backend.recirc_toggle() == false {
             self.recirc_led.set_high();
         }
 
-        match self.backend.fan_speed(){
-            0 => {self.fanhigh_led.set_high(); self.fanlow_led.set_high();}
-            50 => {self.fanhigh_led.set_high(); self.fanlow_led.set_low();}
-            100 => {self.fanhigh_led.set_low(); self.fanlow_led.set_high();}
-            _ => ()
+        match self.backend.fan_speed() {
+            0 => {
+                self.fanhigh_led.set_high();
+                self.fanlow_led.set_high();
+            }
+            50 => {
+                self.fanhigh_led.set_high();
+                self.fanlow_led.set_low();
+            }
+            100 => {
+                self.fanhigh_led.set_low();
+                self.fanlow_led.set_high();
+            }
+            _ => (),
         }
-
-
     }
-
 
     async fn write_serial(&mut self, input: u128) {
         for i in (0..128).rev() {
@@ -948,11 +981,11 @@ impl<'a> DigiDisplay<'a> {
     fn write_ic(&mut self, input: u32) {
         let dispvalue = input.to_le_bytes();
         /*self.i2c
-            .blocking_write(
-                self.chipaddr,
-                &[0x00, dispvalue[0], dispvalue[1], dispvalue[2]],
-            )
-            .unwrap();*/
+        .blocking_write(
+            self.chipaddr,
+            &[0x00, dispvalue[0], dispvalue[1], dispvalue[2]],
+        )
+        .unwrap();*/
     }
 
     pub async fn update_display(&mut self) {
@@ -968,7 +1001,6 @@ impl<'a> DigiDisplay<'a> {
         self.write_serial(serialdata.bits().into()).await;
         self.write_ic(segdata.bits());
         self.led_writer();
-
     }
 }
 
