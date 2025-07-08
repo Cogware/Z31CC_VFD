@@ -683,28 +683,84 @@ impl SegDisplayBits {
     }
 }
 
-/*struct ButtonPinPairs {
-    auto: [u8; 2],
-    demist: [u8; 2],
-    tempup: [u8; 2],
-    off: [u8; 2],
-    fanlo: [u8; 2],
-    fanhigh: [u8; 2],
-    recirc: [u8; 2],
-    tempdown: [u8; 2],
-}*/
-
-pub struct DigiDisplay<'a> {
-    i2c: I2c<'a, I2C1, Blocking>,
-    serialclock: Output<'a>,
-    serialdata: Output<'a>,
-    chipaddr: u8,
+pub struct Buttons<'a> {
     pin1: Flex<'a>,
     pin2: Flex<'a>,
     pin3: Flex<'a>,
     pin4: Flex<'a>,
     pin5: Flex<'a>,
     pin6: Flex<'a>,
+}
+
+impl<'a> Buttons<'a>{
+    pub fn new(
+    pin1: Flex<'a>,    
+    pin2: Flex<'a>,
+    pin3: Flex<'a>,
+    pin4: Flex<'a>,
+    pin5: Flex<'a>,
+    pin6: Flex<'a>) -> Self{
+        Buttons { pin1, pin2, pin3, pin4, pin5, pin6}
+    }
+
+    fn get(&'a mut self, button: Button) -> (&'a mut Flex<'a>, &'a Flex<'a>){
+        match button{
+            Button::Auto => (&mut self.pin1, &self.pin4),
+            Button::Demist => (&mut self.pin1, &self.pin2),
+            Button::TempUp => (&mut self.pin4, &self.pin5),
+            Button::Off => (&mut self.pin3, &self.pin4),
+            Button::FanLo => (&mut self.pin6, &self.pin2),
+            Button::FanHigh => (&mut self.pin6, &self.pin4),
+            Button::Recirc => (&mut self.pin2, &self.pin3),
+            Button::TempDown => (&mut self.pin2, &self.pin5),
+        }
+    }
+}
+#[derive(Clone, Copy)]
+pub enum Button {
+    Auto,
+    Demist,
+    TempUp,
+    Off,
+    FanLo,
+    FanHigh,
+    Recirc,
+    TempDown,
+}
+
+pub struct ButtonIter<'a>{
+    buttons: &'a Buttons<'a>,
+    next: Option<Button>
+}
+
+impl<'a> ButtonIter<'a>{
+    fn new(buttons: &'a mut Buttons) -> Self{
+        ButtonIter { buttons, next: Some(Button::Auto) }
+    }
+}
+
+impl<'a> Iterator for ButtonIter<'a>{
+    type Item = (&'a mut Flex<'a>, &'a Flex<'a>);
+    fn next(&mut self) -> Option<Self::Item>{
+        let next = self.next?;
+        match next{
+            Button::Auto => self.next = Some(Button::Demist),
+            Button::Demist => self.next = Some(Button::Demist),
+            Button::TempUp => self.next = Some(Button::Demist),
+            Button::Off => self.next = Some(Button::Demist),
+            Button::FanLo => self.next = Some(Button::Demist),
+            Button::FanHigh => self.next = Some(Button::Demist),
+            Button::Recirc => self.next = Some(Button::Demist),
+            Button::TempDown => {self.next = None;
+                                Some(self.buttons.get(next))},
+        }
+    }
+}
+pub struct DigiDisplay<'a> {
+    i2c: I2c<'a, I2C1, Blocking>,
+    serialclock: Output<'a>,
+    serialdata: Output<'a>,
+    chipaddr: u8,
     demist_led: Output<'a>,
     ac_led: Output<'a>,
     econ_led: Output<'a>,
@@ -712,7 +768,7 @@ pub struct DigiDisplay<'a> {
     fanhigh_led: Output<'a>,
     fanlow_led: Output<'a>,
     recirc_led: Output<'a>,
-    pinpairs: [[Flex<'a>; 2]; 8],
+    //pinpairs: [[&'a Flex<'a>; 2]; 8],
 }
 
 impl<'a> DigiDisplay<'a> {
@@ -720,12 +776,6 @@ impl<'a> DigiDisplay<'a> {
         mut i2c: I2c<'a, I2C1, Blocking>,
         serialclock: Output<'a>,
         serialdata: Output<'a>,
-        pin1: Flex<'a>,
-        pin2: Flex<'a>,
-        pin3: Flex<'a>,
-        pin4: Flex<'a>,
-        pin5: Flex<'a>,
-        pin6: Flex<'a>,
         demist_led: Output<'a>,
         ac_led: Output<'a>,
         econ_led: Output<'a>,
@@ -737,28 +787,22 @@ impl<'a> DigiDisplay<'a> {
         let chipaddr = 0x38;
         block_for(Duration::from_millis(10));
         i2c.blocking_write(chipaddr, &[0x49]).unwrap();
-        let pinpairs: [[Flex<'a>; 2]; 8] = [
-            [pin1, pin4], //auto
-            [pin1, pin2], //demist
-            [pin4, pin5], //tempup
-            [pin3, pin4], //off
-            [pin6, pin2], //fanlo
-            [pin6, pin4], //fanhigh
-            [pin2, pin3], //recirc
-            [pin2, pin5], //tempdown
-        ];
+        /*let pinpairs: [[&Flex<'a>; 2]; 8] = [
+            [&pin1, &pin4], //auto
+            [&pin1, &pin2], //demist
+            [&pin4, &pin5], //tempup
+            [&pin3, &pin4], //off
+            [&pin6, &pin2], //fanlo
+            [&pin6, &pin4], //fanhigh
+            [&pin2, &pin3], //recirc
+            [&pin2, &pin5], //tempdown
+        ];*/
 
         DigiDisplay {
             i2c,
             serialclock,
             serialdata,
             chipaddr,
-            pin1,
-            pin2,
-            pin3,
-            pin4,
-            pin5,
-            pin6,
             demist_led,
             ac_led,
             econ_led,
@@ -766,11 +810,11 @@ impl<'a> DigiDisplay<'a> {
             fanhigh_led,
             fanlow_led,
             recirc_led,
-            pinpairs,
+            //pinpairs,
         }
     }
 
-    async fn buttonreader(&mut self) {
+    /*async fn buttonreader(&mut self) {
         for [mut setpin, checkpin] in self.pinpairs {
             setpin.set_as_output();
             setpin.set_low();
@@ -779,7 +823,7 @@ impl<'a> DigiDisplay<'a> {
             setpin.set_as_input();
             setpin.set_pull(Pull::Up);
         }
-    }
+    }*/
 
     async fn write_serial(&mut self, input: u128) {
         for i in (0..128).rev() {
